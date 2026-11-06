@@ -135,6 +135,12 @@ export function createDraft(container, code, onLeave) {
     poolLoading = true;
     const decade = room.decade || "1990s";
     decadeTag.textContent = "DRAFTING FROM THE " + decade.toUpperCase();
+    if (room.gameDate) {
+      const d = room.gameDate;
+      const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+      decadeTag.append(el("br"), el("span", { className: "draft-gamedate" },
+        `GAME DAY: ${MON[Math.floor(d / 100) % 100 - 1]} ${d % 100}, ${Math.floor(d / 10000)}`));
+    }
     loadPool(decade).then((p) => { pool = p; poolLoading = false; render(); })
       .catch((e) => { poolLoading = false; message = e.message; render(); });
   }

@@ -257,3 +257,194 @@ body.drafting #app { max-width: 1400px; }
 .modal[hidden] { display: none; }
 .modal-box { max-width: 520px; width: 100%; background: #1b1b1b; border: 3px solid #444; border-radius: 18px; padding: 24px; text-align: center; box-shadow: 0 10px 40px #000; }
 .modal-box h2 { color: #7cfc7c; margin: 0 0 4px; }
+
+/* === Time Machine Baseball: retro electronic handheld (game day only) === */
+body.drafting { background: radial-gradient(ellipse at 50% 12%, #36322e 0, #171411 60%, #0d0c0b 100%); }
+body.drafting #app { max-width: 1450px; }
+body.drafting .draft { grid-template-columns: minmax(190px, 250px) minmax(0, 620px) minmax(190px, 250px); gap: clamp(12px, 2vw, 24px); justify-content: center; }
+.middle.handheld {
+  color: #3d2b22;
+  padding: 26px 28px 20px;
+  border: 2px solid #f9eed0;
+  border-bottom: 9px solid #c9b8a1;
+  border-radius: 45px 45px 68px 68px;
+  background: linear-gradient(105deg, #e0d6be 0%, #fff7e1 15%, #f6e9d0 65%, #d0bfa3 100%);
+  box-shadow: inset 6px 6px 9px #fff9e9, inset -6px -7px 12px #a99b83, 0 16px 32px #0009;
+  text-align: center;
+  min-width: 0;
+}
+.middle.handheld .title.small {
+  color: #713e32;
+  text-shadow: 1px 2px #fff7eb;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 900;
+  font-size: clamp(14px, 1.9vw, 19px);
+  letter-spacing: .23em;
+  margin: 0 0 13px;
+}
+.middle.handheld .roomcode { color: #8b7162; letter-spacing: .2em; font-size: 10px; margin: 0 0 17px; }
+.handheld-score-window {
+  background: linear-gradient(135deg, #4e2c23, #9a624b 20%, #64392b 75%, #ad7e5e);
+  padding: 12px;
+  border-radius: 18px;
+  border: 4px solid #b7a087;
+  box-shadow: inset 0 3px 6px #241008, 0 2px 0 #fff3da;
+}
+.handheld-score-window > * { background-color: #171e20; }
+.handheld-date {
+  color: #ff775b;
+  font-size: clamp(15px, 2.4vw, 24px);
+  letter-spacing: .2em;
+  font-weight: bold;
+  padding: 12px 4px 9px;
+  border-radius: 8px 8px 0 0;
+  text-shadow: 0 0 10px #ff6b54;
+}
+.handheld .scoreboard { border-radius: 0; margin: 0; padding: 1px 12px; }
+.handheld .score-row { gap: 10px; border-top: 1px solid #364547; }
+.handheld .score-name { color: #e7ebdf; overflow-wrap: anywhere; font-size: clamp(13px, 1.8vw, 18px); }
+.handheld .score-name small { color: #b3c4b7; font-size: 10px; display: block; letter-spacing: .12em; }
+.handheld .score-runs { color: #ff4e42; font: bold clamp(35px, 5vw, 52px)/1 "Courier New", monospace; text-shadow: 0 0 6px #ff342b, 0 0 16px #e41f19; }
+.handheld .ticker {
+  margin: 0;
+  border-top: 1px solid #3b4241;
+  border-radius: 0 0 8px 8px;
+  padding: 12px 9px;
+  min-height: 62px;
+  color: #ffe368;
+  text-shadow: 0 0 7px #ffcc3399;
+  font-weight: 700;
+  font-size: clamp(12px, 1.6vw, 15px);
+}
+.field-window {
+  background: linear-gradient(145deg, #7f5c45, #ac8261 35%, #6e4b39 100%);
+  padding: 9px;
+  margin: 16px 2px 18px;
+  border: 4px solid #c3a78a;
+  border-radius: 20px 20px 32px 32px;
+  box-shadow: inset 0 4px 9px #3a221a, 0 3px 0 #fff8e4;
+}
+.field-rim { background: radial-gradient(ellipse at 50% 40%, #52d281, #3caa65 70%, #2d9651); border-radius: 13px 13px 26px 26px; border: 3px solid #2d7e51; overflow: hidden; }
+.field-svg svg { display: block; width: 100%; height: auto; max-height: 310px; }
+.field-legend { color: #e8ffe9; letter-spacing: .18em; font-size: 11px; padding: 2px 4px 8px; font-weight: bold; text-shadow: 0 1px #2b5635; }
+.base-lit { filter: drop-shadow(0 0 5px #ff2820); }
+.field-scored .field-rim { animation: score-flash .55s ease-out; }
+@keyframes score-flash { 25% { filter: brightness(1.5); } 100% { filter: brightness(1); } }
+.middle.handheld .pbp-buttons { display: flex; gap: clamp(7px, 2vw, 13px); align-items: stretch; margin: 4px 3px 0; }
+.handheld-button {
+  flex: 1; min-width: 0; cursor: pointer; border: 2px solid #dfcdb6; border-radius: 999px;
+  padding: 14px 5px; font: 900 clamp(10px, 1.5vw, 14px) Arial, sans-serif; letter-spacing: .05em;
+  color: #fff; background: #286bd3; box-shadow: inset 0 3px 3px #ffffff55, inset 0 -3px 4px #0b275480, 0 5px 0 #154a96, 0 7px 5px #0004;
+}
+.handheld-button.orange { background: #e76033; box-shadow: inset 0 3px 3px #ffffff55, inset 0 -3px 4px #832b0e80, 0 5px 0 #a23a19, 0 7px 5px #0004; }
+.handheld-button.next-button { flex: 1.48; }
+.handheld-button:active { transform: translateY(3px); box-shadow: 0 2px 0 #6a5142; }
+.handheld-button:focus-visible { outline: 3px solid #1b4589; outline-offset: 3px; }
+.speaker-grille { width: 105px; height: 35px; margin: 22px auto 6px; border-radius: 6px; background: repeating-linear-gradient(to bottom, transparent 0 4px, #ac997b 5px 7px, #fff5df 8px 10px); opacity: .75; }
+.handheld-caption { color: #8e7663; letter-spacing: .13em; font-size: 10px; line-height: 1.5; margin: 12px 0 4px; font-weight: bold; }
+.middle.handheld > .btn.secondary { display: inline-block; width: auto; font-size: 11px; background: #7b6a60; color: white; padding: 10px 22px; margin: 13px auto 0; }
+.middle.handheld .credit { color: #7c6e5b; font-size: 9px; margin-top: 17px; }
+.middle.handheld > .hint { color: #70594b; }
+.middle.handheld > .lead { color: #554034; }
+.middle.handheld > .notes { color: #503f34; }
+.middle.handheld > .led.small { background: #1b2021; font-size: 20px; color: #ff7959; text-shadow: 0 0 8px #ff795999; }
+.middle.handheld > .scoreboard { background: #1b2021; border: 9px solid #815b48; border-radius: 16px; }
+.middle.handheld > .scoreboard .score-name { color: #f0f7e8; }
+.middle.handheld > .scoreboard .score-runs { color: #ff5848; }
+.middle.handheld > .btn:not(.secondary) { background: #e76033; box-shadow: 0 4px 0 #993e1c; }
+/* Portable split-flap time machine. Individual year flips step backwards rather than skipping years. */
+.travel-display { border: 12px solid #805943; border-radius: 22px; padding: 32px 12px 27px; background: #1a2020; box-shadow: inset 0 4px 12px #000a; color: #ffdc86; }
+.travel-caption { font-size: 12px; letter-spacing: .12em; margin: 0 0 26px; }
+.flip-clock { display: flex; gap: clamp(5px, 1.4vw, 12px); justify-content: center; }
+.flip-tile { min-width: 0; flex: 1; max-width: 140px; }
+.flip-label { color: #aaafa7; display: block; font-size: 11px; letter-spacing: .16em; margin-bottom: 7px; }
+.flip-number { position: relative; display: grid; place-items: center; height: clamp(62px, 10vw, 92px); overflow: hidden; border-radius: 8px; border: 2px solid #333b3a; background: linear-gradient(to bottom, #303536 0 48%, #080c0c 49% 52%, #2a3030 53%); box-shadow: inset 0 4px 8px #0009, 0 4px 0 #090b0b; color: #ffd78a; font: 900 clamp(20px, 3.7vw, 38px) 'Courier New', monospace; text-shadow: 0 0 9px #ff9d5577; }
+.flip-number::after { content: ''; position: absolute; top: 49%; left: 0; right: 0; height: 3px; background: #080c0c; z-index: 2; }
+.flip-leaf { display: inline-block; transform-origin: center center; animation: flap-turn .095s ease-out; }
+@keyframes flap-turn { 0% { transform: perspective(180px) rotateX(-75deg); filter: brightness(1.7); } 100% { transform: perspective(180px) rotateX(0); filter: brightness(1); } }
+/* The team lists stay as separate companion cards, with room for names and stats. */
+body.drafting .draft:has(.handheld) .team { background: #f0e9d9; border: 2px solid #d2c4af; color: #392f2a; box-shadow: 0 8px 25px #0005; }
+body.drafting .draft:has(.handheld) .team h2 { color: #64412e; overflow-wrap: anywhere; }
+body.drafting .draft:has(.handheld) .slots li { border-color: #dbcebd; color: #a59d92; }
+body.drafting .draft:has(.handheld) .slots li.filled { color: #382f2a; }
+body.drafting .draft:has(.handheld) .slots li.group { color: #8c614f; font-weight: bold; }
+body.drafting .draft:has(.handheld) .slots .slot { color: #b45435; }
+body.drafting .draft:has(.handheld) .box .who small { color: #84786c; }
+body.drafting .draft:has(.handheld) .box .pts { color: #317848; }
+body.drafting .draft:has(.handheld) .team h2.on-clock { color: #ae3328; background: #e8d4c2; }
+body.drafting .draft:has(.handheld) .box .moved { color: #9d5c22; }
+@media (max-width: 1000px) {
+  body.drafting .draft { grid-template-columns: minmax(0, 1fr); max-width: 640px; margin: 0 auto; }
+  body.drafting .draft .middle { order: -1; }
+  body.drafting .draft:has(.handheld) .team { width: 100%; }
+  body.drafting #app { padding: 14px; }
+  .middle.handheld { padding: 23px 18px 18px; }
+}
+@media (max-width: 420px) {
+  .middle.handheld { padding: 21px 11px 16px; border-radius: 35px 35px 50px 50px; }
+  .handheld-score-window { padding: 7px; }
+  .handheld .scoreboard { padding: 1px 6px; }
+  .handheld .score-row { gap: 5px; }
+  .handheld .diamond svg { width: 39px; height: 30px; }
+  .handheld .score-runs { min-width: 35px; }
+  .field-window { margin: 12px 1px; padding: 5px; }
+  .flip-number { font-size: clamp(18px, 6vw, 26px); }
+  .travel-display { border-width: 7px; padding: 20px 7px; }
+  .handheld-button { padding: 13px 2px; }
+  .handheld-caption { font-size: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flip-leaf, .field-scored .field-rim { animation: none !important; }
+}
+
+/* --- Handheld revision 2: approved bench controls, legibility, speaker --- */
+body.drafting .draft:has(.handheld) .slots li:not(.group) { color: #50473d; }
+body.drafting .draft:has(.handheld) .slots li.filled,
+body.drafting .draft:has(.handheld) .slots li.filled .who { color: #2b241e; }
+body.drafting .draft:has(.handheld) .slots li:not(.filled) .who { color: #655b50; }
+body.drafting .draft:has(.handheld) .team .hint { color: #6f6157; }
+.bench-view-button {
+  display: block; width: min(100%, 170px); margin: 15px auto 4px;
+  padding: 11px 12px; border: 2px solid #dfcdb6; border-radius: 999px;
+  background: #286bd3; color: #fff; cursor: pointer;
+  font: 900 14px Arial, Helvetica, sans-serif; letter-spacing: .11em;
+  box-shadow: inset 0 3px 3px #ffffff55, inset 0 -3px 4px #0b275480, 0 4px 0 #154a96, 0 6px 5px #0004;
+}
+.bench-view-button:active { transform: translateY(2px); box-shadow: 0 2px 0 #154a96; }
+.bench-view-button:focus-visible, .bench-player:focus-visible { outline: 3px solid #286bd3; outline-offset: 3px; }
+.handheld-button.sound-button { display: inline-flex; align-items: center; justify-content: center; }
+.speaker-icon { display: inline-flex; align-items: center; justify-content: center; }
+.bench-modal-content { text-align: left; color: #e8e2c8; }
+.bench-modal-content h2 { text-align: center; color: #ffdd83; font-size: 23px; letter-spacing: .08em; }
+.bench-subtitle { text-align: center; color: #b4ada1; font-size: 11px; letter-spacing: .12em; margin: 0 0 18px; }
+.bench-list { list-style: none; padding: 0; margin: 0; max-height: min(54vh, 480px); overflow: auto; }
+.bench-entry { display: grid; grid-template-columns: 35px 1fr auto; gap: 4px 9px; align-items: center;
+  padding: 9px 5px; border-bottom: 1px solid #48443b; }
+.bench-pos { color: #ff9f76; font-weight: bold; font-size: 12px; }
+.bench-player { background: none; color: #fff6dd; border: 0; padding: 4px 0; font: bold 14px 'Courier New', monospace; cursor: pointer; text-align: left; }
+.bench-player:hover:not(:disabled) { text-decoration: underline; }
+.bench-player:disabled { color: #888; cursor: default; }
+.bench-status { font: bold 10px Arial, sans-serif; color: #a6a9a2; text-align: right; }
+.bench-status.is-protected { color: #94df9c; }
+.bench-status.was-moved { color: #ffd182; }
+.bench-stat { grid-column: 2 / 4; color: #b6ae9f; font-size: 11px; }
+.bench-footnote { margin: 14px 0 0; color: #b7aa96; font-size: 11px; line-height: 1.5; }
+@media(max-width: 420px) { .bench-entry { grid-template-columns: 30px 1fr; } .bench-status { grid-column: 2; text-align: left; } .bench-stat { grid-column: 2; } }
+
+/* --- Time machine before the draft (update 8) --- */
+/* The flip clock now plays on its own screen right before the draft. */
+#app:has(.handheld.solo) { max-width: 660px; }
+.middle.handheld.solo { margin: 0 auto; }
+/* Small red LED date line on the scoreboard ("JULY 12 · 1995"). */
+.handheld-date {
+  font-size: clamp(12px, 1.6vw, 16px);
+  letter-spacing: .18em;
+  padding: 8px 4px 6px;
+  color: #ff4a3d;
+  text-shadow: 0 0 6px #ff4a3d99;
+}
+/* The game date under the draft title. */
+.draft-gamedate { color: #ffb74d; letter-spacing: .12em; }
+/* START THE DRAFT button under the flip clock: same orange as NEXT. */
+.middle.handheld .btn.start-draft { display: block; width: min(100%, 320px); margin: 22px auto 0; background: #e76033; box-shadow: inset 0 3px 3px #ffffff55, inset 0 -3px 4px #832b0e80, 0 5px 0 #a23a19, 0 7px 5px #0004; border: 2px solid #dfcdb6; font-family: Arial, Helvetica, sans-serif; font-weight: 900; letter-spacing: .1em; }
+.middle.handheld .btn.start-draft[hidden] { display: none; }

@@ -1,12 +1,16 @@
 import "./style.css";
-import { signIn, createRoom, joinRoom, watchRoom, goOnline, myId } from "./firebase.js";
+import { signIn, createRoom, joinRoom, watchRoom, goOnline, myId, updateRoom } from "./firebase.js";
 import { createDraft } from "./draft.js";
 import { createGameDay } from "./gameday.js";
+import { randomDate, showFlipClock, clockSeen } from "./timetravel.js";
 
 const app = document.querySelector("#app") || document.body;
 let stopWatching = null;
 let draft = null;
 let gameday = null;
+let rollingDate = false;   // host is picking the game date
+let clockFor = null;       // "CODE|date" while the flip clock is on screen
+let stopClock = null;
 
 // ---------- RAIN DELAY: pause the screen while a player is disconnected ----------
 const RAIN_DELAY_WAIT_MS = 5000; // how long someone can blink offline before the delay starts
@@ -57,6 +61,8 @@ function stopRain() {
 }
 
 function closeDraft() {
+  if (stopClock) { stopClock(); stopClock = null; }
+  clockFor = null;
   if (draft) { draft.destroy(); draft = null; }
   if (gameday) { gameday.destroy(); gameday = null; }
 }
@@ -175,13 +181,42 @@ async function enterRoom(code) {
     }
     lastRoom = room;
     checkRain(code, room);
+    // The host picks the game date as soon as the room exists, so it can be shown before the draft.
+    if (!room.gameDate && room.host === meId && !rollingDate) {
+      rollingDate = true;
+      randomDate(room.decade || "1990s")
+        .then((d) => updateRoom(code, { gameDate: d }))
+        .catch(() => {}) // if this fails, the next room update tries again
+        .finally(() => { rollingDate = false; });
+    }
     const players = Object.values(room.players || {}).sort((a, b) => a.seat - b.seat);
     if (room.status === "waiting") { closeDraft(); waitingScreen(code, players, room.decade); }
     else if (room.status === "drafted") {
+      if (stopClock) { stopClock(); stopClock = null; clockFor = null; }
       if (draft) { draft.destroy(); draft = null; }
       if (!gameday) gameday = createGameDay(app, code, leave);
       gameday.update(room);
     } else {
+      // Draft time: first the time machine travels to the game date, then the draft.
+      if (!room.gameDate) {
+        if (!draft) show(el("p", { className: "hint" }, "Spinning the time machine..."));
+        return;
+      }
+      if (!draft && !clockSeen(code, room.gameDate)) {
+        const key = code + "|" + room.gameDate;
+        if (clockFor !== key) {
+          if (stopClock) stopClock();
+          clockFor = key;
+          stopClock = showFlipClock(app, code, room.decade, room.gameDate, () => {
+            stopClock = null; clockFor = null;
+            if (lastRoom && lastRoom.status !== "waiting" && lastRoom.status !== "drafted" && !draft) {
+              draft = createDraft(app, code, leave);
+              draft.update(lastRoom);
+            }
+          });
+        }
+        return; // the draft appears when the clock lands
+      }
       if (!draft) draft = createDraft(app, code, leave);
       draft.update(room);
     }

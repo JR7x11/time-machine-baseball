@@ -6,6 +6,8 @@ import { playGame, shuffleTeams, teamFromPicks, RULES, POSITIONS, BENCH } from "
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const prettyDate = (d) => `${MONTHS[Math.floor(d / 100) % 100 - 1]} ${d % 100}, ${Math.floor(d / 10000)}`;
+const FULL_MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
+const ledDate = (d) => `${FULL_MONTHS[Math.floor(d / 100) % 100 - 1]} ${d % 100} · ${Math.floor(d / 10000)}`;
 const shortDate = (d) => `${Math.floor(d / 100) % 100}/${d % 100}`;
 const ip = (outs) => `${Math.floor(outs / 3)}.${outs % 3}`;
 const CREDIT = "The information used here was obtained free of charge from and is copyrighted by Retrosheet. " +
@@ -108,6 +110,59 @@ export function createGameDay(container, code, onLeave) {
   let keepChoice = null;   // bench slots this player is protecting
   let stage = "pbp1";      // pbp1 → stretch → pbp2 → final  (each player steps at his own pace)
   let step = 0;
+  let soundOn = false;
+  let audioCtx = null;
+  let clockTimer = null;
+  let clockResolve = null;
+  let destroyed = false;
+  let lastFieldRuns = { A: 0, B: 0 };
+  const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+  function beep(frequency = 460, duration = 0.055) {
+    if (!soundOn) return;
+    try {
+      audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.025, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    } catch { /* Audio is optional; gameplay never depends on it. */ }
+  }
+
+  function cancelClock() {
+    if (clockTimer != null) { clearTimeout(clockTimer); clockTimer = null; }
+    if (clockResolve) { const done = clockResolve; clockResolve = null; done(); }
+  }
+
+  // Accessible speaker symbol. Uses inline SVG so it also works offline.
+  function speakerIcon() {
+    const paths = soundOn
+      ? '<path d="M11 5L6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>'
+      : '<path d="M11 5L6 9H3v6h3l5 4V5Z"/><path d="m16 9 5 6m0-6-5 6"/>';
+    return el("span", { className: "speaker-icon", innerHTML:
+      `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>` });
+  }
+  function drawSoundLabels() {
+    middle.querySelectorAll(".sound-button").forEach((b) => {
+      b.replaceChildren(speakerIcon());
+      b.setAttribute("aria-pressed", String(soundOn));
+      b.setAttribute("aria-label", soundOn ? "Mute sound" : "Turn sound on");
+      b.setAttribute("title", soundOn ? "Sound on" : "Sound off");
+    });
+  }
+  function soundButton() {
+    return el("button", { className: "handheld-button blue sound-button", type: "button",
+      title: soundOn ? "Sound on" : "Sound off",
+      ariaLabel: soundOn ? "Mute sound" : "Turn sound on",
+      ariaPressed: String(soundOn), onclick: () => { soundOn = !soundOn; beep(580); drawSoundLabels(); } },
+      speakerIcon());
+  }
 
   const left = el("section", { className: "team" });
   const right = el("section", { className: "team" });
@@ -143,7 +198,7 @@ export function createGameDay(container, code, onLeave) {
         kept?.includes(slot) || slot === "SP" ? el("small", {}, " 🔒") : null));
     target.replaceChildren(
       el("h2", {}, name),
-      note ? el("p", { className: "hint" }, note) : null,
+      ...(note ? [el("p", { className: "hint" }, note)] : []),
       el("ul", { className: "slots" },
         el("li", { className: "group" }, "LINEUP"), ...POSITIONS.map(row),
         el("li", { className: "group" }, "BENCH"), ...BENCH.map(row),
@@ -210,7 +265,7 @@ export function createGameDay(container, code, onLeave) {
       updateRoom(code, { [`ready/${cpu}`]: { keep: bench } }).catch(() => {});
     }
     const bothReady = s.uids.length === 2 && s.uids.every((u) => s.ready[u]);
-    if (!bothReady) { shownFor = null; return readyScreen(s); }
+    if (!bothReady) { shownFor = null; cancelClock(); middle.classList.remove("handheld", "time-travel"); return readyScreen(s); }
 
     if (!r.gameDate) {
       message("Spinning the time machine...");
@@ -224,15 +279,20 @@ export function createGameDay(container, code, onLeave) {
     }
     if (shownFor === r.gameDate) return;
     shownFor = r.gameDate;
-    message("Traveling to " + prettyDate(r.gameDate) + "...");
+    // The flip clock already showed this date before the draft, so play starts right away.
+    message("Loading " + prettyDate(r.gameDate) + "...");
     try {
       const year = String(r.gameDate).slice(0, 4);
       const [day, pitching] = await Promise.all([
         getJSON(`/data/${year}/days/${r.gameDate}.json`),
         getJSON(`/data/${year}/pitching.json`),
       ]);
-      play(s, day, pitching);
+      if (!destroyed && shownFor === r.gameDate) {
+        middle.classList.remove("time-travel");
+        play(s, day, pitching);
+      }
     } catch (e) {
+      cancelClock();
       shownFor = null;
       message(e.message);
     }
@@ -240,6 +300,8 @@ export function createGameDay(container, code, onLeave) {
 
   // ---------- the game ----------
   function play(s, day, pitching) {
+    middle.classList.add("handheld");
+    lastFieldRuns = { A: 0, B: 0 };
     const [uA, uB] = s.uids;                  // A = home (started the game), B = visitors
     const date = room.gameDate;
     const seed = code + "|" + date;
@@ -251,6 +313,53 @@ export function createGameDay(container, code, onLeave) {
     const theirs = mine === "A" ? "B" : "A";
     const opp = (k) => (k === "A" ? "B" : "A");
     const fromOther = (key, pick) => (pick && shuffled.moved.has(pick.pid) ? name[opp(key)] : null);
+
+    // The two benches reflect the ACTUAL post-shuffle rosters, not the draft order.
+    // Original ownership is recovered from the saved picks for accurate swap labels.
+    const originalOwner = new Map();
+    for (const uid of s.uids) {
+      for (const pick of Object.values(s.drafted[uid])) {
+        if (pick?.pid != null) originalOwner.set(String(pick.pid), uid === uA ? "A" : "B");
+      }
+    }
+    function openBench(key) {
+      const rows = BENCH.map((slot) => {
+        const pick = teams[key][slot];
+        const original = pick ? originalOwner.get(String(pick.pid)) : null;
+        const protectedPick = !!pick && original === key && s.ready[s.uids[key === "A" ? 0 : 1]]?.keep?.includes(slot);
+        const moved = !!pick && original && original !== key;
+        const record = pick && day.b?.[pick.pid];
+        const desc = protectedPick ? "PROTECTED" : moved ? `TRADED FROM ${name[original].toUpperCase()}` : "REMAINED";
+        const detail = record ? hitLine(record) : "Did not play on game day";
+        const showStats = () => {
+          if (!pick) return;
+          const details = [el("h2", {}, pick.name),
+            el("p", { className: "hint" }, `${slot.replace(" BN", "")} · ${prettyDate(date)}`),
+            el("p", {}, `Current bench: ${name[key]} · ${desc.toLowerCase()}`)];
+          if (record) {
+            details.push(el("p", {}, "Stats from this date"),
+              statTable(["AB", "H", "2B", "3B", "HR", "BB", "HBP", "SB", "CS", "K"], record.slice(0, 10)));
+          } else details.push(el("p", {}, "No recorded batting appearance on this date."));
+          openCard(...details);
+        };
+        return el("li", { className: "bench-entry" },
+          el("span", { className: "bench-pos" }, slot.replace(" BN", "")),
+          el("button", { className: "bench-player", type: "button", disabled: !pick,
+            onclick: showStats, title: pick ? "See game-day statistics" : "Empty slot" }, pick?.name ?? "—"),
+          el("span", { className: "bench-status" + (protectedPick ? " is-protected" : moved ? " was-moved" : "") },
+            protectedPick ? "🔒 " : moved ? "↔ " : "", desc),
+          el("small", { className: "bench-stat" }, detail));
+      });
+      openCard(el("div", { className: "bench-modal-content" },
+        el("h2", {}, `${name[key].toUpperCase()}'S BENCH`),
+        el("p", { className: "bench-subtitle" }, `${key === "A" ? "HOME" : "VISITORS"} · POST-SHUFFLE ROSTER`),
+        el("ul", { className: "bench-list" }, ...rows),
+        el("p", { className: "bench-footnote" }, "🔒 Protected · ↔ Moved during shuffle · Select a player for his actual game-day stats.")));
+    }
+    function addBenchButton(target, key) {
+      target.append(el("button", { className: "bench-view-button", type: "button",
+        onclick: () => openBench(key), ariaLabel: `View ${name[key]}'s bench` }, "BENCH"));
+    }
 
     const mid = playGame(teams, day, pitching, date, seed, 6);
     const full = playGame(teams, day, pitching, date, seed, 9);
@@ -302,26 +411,26 @@ export function createGameDay(container, code, onLeave) {
         const official = stage === "pbp1" ? mid : full;
         const shown = step >= steps.length ? { A: official.A, B: official.B } : scoreFrom({ A: base.A + cum.A, B: base.B + cum.B });
         const last = steps[step - 1];
-        middle.replaceChildren(header(),
-          el("div", { className: "led small" }, prettyDate(date)),
-          scoreboard(shown, name),
-          el("div", { className: "ticker" }, last ? last.text :
-            stage === "pbp1" ? `PLAY BALL! ${name.B.toUpperCase()} BATS FIRST.` : "LATE INNINGS — HERE COME THE BULLPENS"),
-          el("p", { className: "hint" }, `${stage === "pbp1" ? "INNINGS 1–6" : "INNINGS 7–9"} · ${step} OF ${steps.length}`),
-          el("div", { className: "pbp-buttons" },
-            el("button", { className: "btn small-btn blue", onclick: () => { step = steps.length; advance(); } }, "SKIP"),
-            el("button", { className: "btn", onclick: () => { step++; advance(); } }, "NEXT ▸")),
-          leaveBtn(), credit());
+        middle.replaceChildren(...handheldView(shown, name,
+          last ? last.text : stage === "pbp1" ? `PLAY BALL! ${name.B.toUpperCase()} BATS FIRST.` : "LATE INNINGS — HERE COME THE BULLPENS",
+          `DRAFTED FROM THE ${room.decade} · ${stage === "pbp1" ? "INNINGS 1–6" : "INNINGS 7–9"} · ${step} OF ${steps.length}`,
+          [el("button", { className: "handheld-button blue", onclick: () => { beep(340); step = steps.length; advance(); } }, "SKIP"),
+           el("button", { className: "handheld-button orange next-button", onclick: () => { beep(580); step++; advance(); } }, "NEXT ▸")],
+          last?.team ?? "B"));
         livePanel(left, mine, stage === "pbp1" ? mid : full, steps, step, stage === "pbp2");
         livePanel(right, theirs, stage === "pbp1" ? mid : full, steps, step, stage === "pbp2");
       } else if (stage === "stretch") {
         stretch(mid, name, () => { stage = "pbp2"; step = 0; draw(); });
         box(left, name[mine], mid[mine], false, (p) => fromOther(mine, p), true);
         box(right, name[theirs], mid[theirs], false, (p) => fromOther(theirs, p), true);
+        addBenchButton(left, mine);
+        addBenchButton(right, theirs);
       } else {
         final(full, name, mine);
         box(left, name[mine], full[mine], mine === full.winner, (p) => fromOther(mine, p), false);
         box(right, name[theirs], full[theirs], theirs === full.winner, (p) => fromOther(theirs, p), false);
+        addBenchButton(left, mine);
+        addBenchButton(right, theirs);
       }
     };
     const advance = () => {
@@ -347,9 +456,48 @@ export function createGameDay(container, code, onLeave) {
         el("span", { className: "slot" }, p.role.slot), el("span", { className: "who" }, p.p?.name ?? "—")));
       target.replaceChildren(el("h2", {}, `${name[key]}${key === "A" ? " (HOME)" : " (VISITORS)"}`),
         el("ul", { className: "slots box" }, ...rows));
+      addBenchButton(target, key);
     }
 
     draw();
+  }
+
+  function renderField(runners, scored = false) {
+    const lights = [runners >= 1, runners >= 2, runners >= 3];
+    const dot = (cx, cy, on) => on ? `<circle cx="${cx}" cy="${cy}" r="5.5" fill="#ff3932" stroke="#fff1d6" stroke-width="1.5" class="base-lit"/>` : "";
+    return el("div", { className: "field-window" + (scored && !reduceMotion() ? " field-scored" : "") },
+      el("div", { className: "field-rim" },
+        el("div", { className: "field-svg", innerHTML: `<svg viewBox="0 0 360 270" role="img" aria-label="Baseball field with ${runners} runners on base">
+          <path d="M18 222 Q180 -14 342 222 L180 257 Z" fill="#41b968" opacity=".5"/>
+          <path d="M180 58 L285 164 L180 251 L75 164 Z" fill="#be864e"/>
+          <path d="M180 74 L270 164 L180 237 L90 164 Z" fill="#44ba70"/>
+          <path d="M180 58 L180 251 M75 164 L285 164" stroke="#b5a27e" stroke-width="2" opacity=".28"/>
+          <!-- Foul lines extend from home plate through the exact centers of third and first base. -->
+          <path d="M0 102 L180 251 L360 102" stroke="#f9f8de" stroke-width="3" fill="none"/>
+          <circle cx="180" cy="164" r="15" fill="#be864e"/><circle cx="180" cy="164" r="5" fill="#6f4a26"/>
+          <rect x="174" y="52" width="12" height="12" transform="rotate(45 180 58)" fill="#f8fff4"/>
+          <rect x="279" y="158" width="12" height="12" transform="rotate(45 285 164)" fill="#f8fff4"/>
+          <rect x="69" y="158" width="12" height="12" transform="rotate(45 75 164)" fill="#f8fff4"/>
+          <path d="M171 247 L180 256 L189 247 L180 239 Z" fill="#fcfff4"/>
+          ${dot(285,164,lights[0])}${dot(180,58,lights[1])}${dot(75,164,lights[2])}
+          </svg>` }),
+        el("div", { className: "field-legend" }, `${runners} RUNNER${runners === 1 ? "" : "S"} ON BASE`)));
+  }
+
+  function handheldView(lines, name, tickerText, caption, buttons, activeKey = "B") {
+    const score = lines[activeKey];
+    const scored = lines.A.runs > lastFieldRuns.A || lines.B.runs > lastFieldRuns.B;
+    lastFieldRuns = { A: lines.A.runs, B: lines.B.runs };
+    return [header(),
+      el("div", { className: "handheld-score-window" },
+        el("div", { className: "handheld-date" }, ledDate(room.gameDate)),
+        scoreboard(lines, name),
+        el("div", { className: "ticker", role: "status", ariaLive: "polite" }, tickerText)),
+      renderField(score.stranded, scored),
+      el("div", { className: "pbp-buttons" }, ...buttons, soundButton()),
+      el("div", { className: "speaker-grille", ariaHidden: "true" }),
+      el("p", { className: "handheld-caption" }, caption),
+      leaveBtn(), credit()];
   }
 
   function scoreboard(lines, name) {
@@ -381,6 +529,7 @@ export function createGameDay(container, code, onLeave) {
       el("p", { className: "hint" }, prettyDate(room.gameDate)),
       el("div", { className: "led small" }, "7TH INNING STRETCH"),
       scoreboard({ A: mid.A, B: mid.B }, name),
+      renderField(mid.B.stranded),
       el("p", { className: "lead" }, "After 6 innings: " + lead),
       el("ul", { className: "notes" }, ...notes.slice(0, 10).map((n) => el("li", {}, n))),
       el("p", { className: "hint" }, "Tip: click any player in the box scores to see his real game."),
@@ -401,8 +550,9 @@ export function createGameDay(container, code, onLeave) {
       el("p", { className: "hint" }, "FINAL"),
       el("div", { className: "led small" }, prettyDate(room.gameDate)),
       scoreboard({ A: res.A, B: res.B }, name),
+      renderField(res.B.stranded),
       el("div", { className: "led small winner" }, res.winner === mine ? "YOU WIN!" : name[res.winner].toUpperCase() + " WINS"),
-      why ? el("p", { className: "hint" }, why) : null,
+      ...(why ? [el("p", { className: "hint" }, why)] : []),
       el("p", { className: "hint" }, "Every 4 bases = 1 run. Leftover bases are runners left on base. Click any player for his real game."),
       leaveBtn(), credit());
   }
@@ -449,6 +599,6 @@ export function createGameDay(container, code, onLeave) {
 
   return {
     update,
-    destroy() { document.body.classList.remove("drafting"); modal.hidden = true; },
+    destroy() { destroyed = true; cancelClock(); audioCtx?.close().catch(() => {}); document.body.classList.remove("drafting"); modal.hidden = true; },
   };
 }
