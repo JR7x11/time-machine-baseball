@@ -40,12 +40,16 @@ function randomCode() {
 }
 
 // Player 1: makes a room and gets a 4-letter code to tell player 2.
-// The computer manager gets a random Hall of Famer's first name each game.
+// The computer manager gets a random name each game (Hall of Famers plus Jay's picks).
 const CPU_NAMES = ["Hank", "Mickey", "Stan", "Babe", "Willie", "Ted", "Lou", "Joe", "Jackie", "Roberto",
   "Cy", "Sandy", "Yogi", "Ernie", "Nolan", "Reggie", "Cal", "Tony", "Ozzie", "Kirby", "Rickey",
   "Satchel", "Honus", "Rogers", "Christy", "Walter", "Ty", "Tris", "Lefty", "Dizzy", "Josh", "Cool Papa",
   "Whitey", "Duke", "Pee Wee", "Johnny", "Brooks", "Harmon", "Yaz", "Rod", "Fergie", "Rollie", "Goose",
-  "Eck", "Tom", "Bob", "Mike", "George", "Wade", "Kirby", "Chipper", "Mariano", "Derek", "Ichiro"];
+  "Eck", "Tom", "Bob", "Mike", "George", "Wade", "Chipper", "Mariano", "Derek", "Ichiro",
+  "Catfish", "Gaylord", "Juan", "Orlando", "Pudge", "Ryne", "Eddie", "Rube", "Mordecai", "Bert", "Vlad", "Big Papi",
+  // Jay's picks: family, friends and movie legends
+  "Pops", "Maddux", "Aaron", "Murphy", "Rocco", "C-Bass", "Treyce", "Randi", "Stacey", "Crash", "Wild Thing",
+  "Jobu", "Roy", "Ebby", "Benny", "Squints", "Smalls", "Dottie", "Ham", "Hercules", "Dale"];
 const cpuName = () => CPU_NAMES[Math.floor(Math.random() * CPU_NAMES.length)];
 
 // vsComputer = true makes a 1-player game: seat 2 is the computer, and the draft starts right away.
