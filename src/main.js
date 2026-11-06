@@ -34,7 +34,7 @@ function hideRain() { rain.hidden = true; clearTimeout(rainTimer); rainTimer = n
 function checkRain(code, room) {
   const me = myId(room);
   const other = Object.keys(room.players || {}).find((u) => u !== me);
-  const otherGone = room.status !== "waiting" && other && !room.online?.[other];
+  const otherGone = room.status !== "waiting" && other && !room.players[other]?.cpu && !room.online?.[other];
   if (iAmOnline && !otherGone) return hideRain();
   if (!rain.hidden || rainTimer) return; // already showing or about to
   rainTimer = setTimeout(() => {
@@ -42,7 +42,7 @@ function checkRain(code, room) {
     const r = lastRoom || room;
     if (!iAmOnline) {
       showRain("You lost your connection.", "Reconnecting... the game picks up right where it left off.");
-    } else if (other && r.status !== "waiting" && !r.online?.[other]) {
+    } else if (other && r.status !== "waiting" && !r.players[other]?.cpu && !r.online?.[other]) {
       const name = r.players[other].name;
       showRain(`${name} lost connection.`,
         `The game is paused until ${name} is back. ${name} can rejoin any time with room code ${code} and the name "${name}".`);
@@ -113,6 +113,7 @@ function homeScreen(message = "") {
     return decadeSel.value === "random" ? all[Math.floor(Math.random() * all.length)] : decadeSel.value;
   }
   const joinBtn = el("button", { className: "btn" }, "JOIN");
+  const cpuBtn = el("button", { className: "btn blue" }, "PLAY THE COMPUTER");
 
   function needName() {
     const n = name.value.trim();
@@ -120,7 +121,14 @@ function homeScreen(message = "") {
     saveName(n);
     return n;
   }
-  function busy(on) { startBtn.disabled = joinBtn.disabled = on; }
+  function busy(on) { startBtn.disabled = joinBtn.disabled = cpuBtn.disabled = on; }
+
+  cpuBtn.onclick = async () => {
+    const n = needName(); if (!n) return;
+    busy(true); error.textContent = "Warming up the computer...";
+    try { enterRoom(await createRoom(n, chosenDecade(), true)); }
+    catch (e) { busy(false); error.textContent = "Couldn't start: " + e.message; }
+  };
 
   startBtn.onclick = async () => {
     const n = needName(); if (!n) return;
@@ -141,6 +149,7 @@ function homeScreen(message = "") {
     el("label", { className: "label" }, "PLAYER NAME"), name,
     el("label", { className: "label top-gap" }, "TRAVEL TO (if you start the game)"), decadeSel,
     startBtn,
+    cpuBtn,
     el("p", { className: "or" }, "— or join a friend —"),
     el("div", { className: "row" }, code, joinBtn),
     el("p", { className: "hint small-hint" },

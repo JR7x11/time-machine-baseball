@@ -260,9 +260,26 @@ export function createDraft(container, code, onLeave) {
     autoBtn.classList.toggle("on", auto);
     autoBtn.style.display = s.done ? "none" : "";
     if (auto && !s.done && s.onClock === s.me && !busy && pool.length) setTimeout(autoPick, 400);
+    // 1-player mode: the host's screen makes the computer's picks.
+    if (!s.done && s.players[s.onClock]?.cpu && room.host === s.me && !busy && pool.length) setTimeout(cpuPick, 900);
     const showPool = !s.done;
     for (const e of [filterRow, search, list]) e.style.display = showPool ? "" : "none";
     renderList();
+  }
+
+  // How good is this player for this spot? (used by AUTO-DRAFT and the computer)
+  function value(p, slot) {
+    if (slot === "CL") return (p.pit?.sv ?? 0) * 3 + (p.pit?.k ?? 0) / 10;
+    if (PITCH_SLOTS.includes(slot)) return p.pit?.k ?? 0;
+    return p.hit?.bases ?? 0;
+  }
+  function fits(p, slot) {
+    return PITCH_SLOTS.includes(slot) ? p.elig.has("P") : p.elig.has(slot.replace(" BN", ""));
+  }
+  function bestFor(slot, s, choices = 1) {
+    const top = pool.filter((p) => !s.taken.has(p.id) && fits(p, slot))
+      .sort((a, b) => value(b, slot) - value(a, slot)).slice(0, choices);
+    return top[Math.floor(Math.random() * top.length)];
   }
 
   // Best available player for my first open spot.
@@ -272,25 +289,37 @@ export function createDraft(container, code, onLeave) {
     const myTeam = s.teams[s.me] || {};
     const slot = SLOTS.find((x) => !myTeam[x]);
     if (!slot) return;
-    const isPitch = PITCH_SLOTS.includes(slot);
-    const pos = slot.replace(" BN", "");
-    const best = pool
-      .filter((p) => !s.taken.has(p.id) && (isPitch ? p.elig.has("P") : p.elig.has(pos)))
-      .sort((a, b) => isPitch ? (b.pit?.k ?? 0) - (a.pit?.k ?? 0) : (b.hit?.bases ?? 0) - (a.hit?.bases ?? 0))[0];
+    const best = bestFor(slot, s);
     if (best) pick(best, slot);
   }
 
-  // ----- making a pick -----
-  async function pick(player, slot) {
+  // The computer manager: fills spots in a sensible order, picking one of the top 3 for variety.
+  const CPU_ORDER = ["SP", "C", "SS", "CF", "1B", "2B", "3B", "LF", "RF", "CL", "RP1",
+    "C BN", "SS BN", "CF BN", "1B BN", "2B BN", "3B BN", "LF BN", "RF BN", "RP2", "SPARE"];
+  function cpuPick() {
     const s = state();
-    if (busy || s.done || s.onClock !== s.me || s.taken.has(player.id)) return;
+    const cpu = s.onClock;
+    if (busy || s.done || !s.players[cpu]?.cpu || room.host !== s.me) return;
+    const team = s.teams[cpu] || {};
+    const slot = CPU_ORDER.find((x) => !team[x]) ?? SLOTS.find((x) => !team[x]);
+    if (!slot) return;
+    const choice = bestFor(slot, s, 3);
+    if (choice) pick(choice, slot, cpu);
+  }
+
+  // ----- making a pick (for me, or for the computer) -----
+  async function pick(player, slot, forWho) {
+    const s = state();
+    const who = forWho ?? s.me;
+    if (busy || s.done || s.onClock !== who || s.taken.has(player.id)) return;
+    if (forWho && !(s.players[forWho]?.cpu && room.host === s.me)) return;
     busy = true; message = ""; renderList();
     const next = s.n + 1;
     try {
       await makePick(code, { n: s.n, pid: player.id, name: player.name, slot },
-        next < TOTAL_PICKS ? s.uidBySeat[seatForPick(next)] : null, s.me);
+        next < TOTAL_PICKS ? s.uidBySeat[seatForPick(next)] : null, who);
       if (next >= TOTAL_PICKS) await updateRoom(code, { status: "drafted" });
-      search.value = ""; query = "";
+      if (!forWho) { search.value = ""; query = ""; }
     } catch (e) {
       message = "Pick didn't go through: " + e.message;
     }

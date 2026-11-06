@@ -40,7 +40,16 @@ function randomCode() {
 }
 
 // Player 1: makes a room and gets a 4-letter code to tell player 2.
-export async function createRoom(name, decade) {
+// The computer manager gets a random Hall of Famer's first name each game.
+const CPU_NAMES = ["Hank", "Mickey", "Stan", "Babe", "Willie", "Ted", "Lou", "Joe", "Jackie", "Roberto",
+  "Cy", "Sandy", "Yogi", "Ernie", "Nolan", "Reggie", "Cal", "Tony", "Ozzie", "Kirby", "Rickey",
+  "Satchel", "Honus", "Rogers", "Christy", "Walter", "Ty", "Tris", "Lefty", "Dizzy", "Josh", "Cool Papa",
+  "Whitey", "Duke", "Pee Wee", "Johnny", "Brooks", "Harmon", "Yaz", "Rod", "Fergie", "Rollie", "Goose",
+  "Eck", "Tom", "Bob", "Mike", "George", "Wade", "Kirby", "Chipper", "Mariano", "Derek", "Ichiro"];
+const cpuName = () => CPU_NAMES[Math.floor(Math.random() * CPU_NAMES.length)];
+
+// vsComputer = true makes a 1-player game: seat 2 is the computer, and the draft starts right away.
+export async function createRoom(name, decade, vsComputer = false) {
   const user = await signIn();
   let code, snap;
   do {
@@ -50,11 +59,13 @@ export async function createRoom(name, decade) {
 
   await set(ref(db, `rooms/${code}`), {
     host: user.uid,
-    status: "waiting",          // waiting -> drafting -> done
+    status: vsComputer ? "drafting" : "waiting", // waiting -> drafting -> drafted
     decade: decade ?? null,
     gameDate: null,             // fill in when you pick the random date
     turn: user.uid,             // whose pick it is
-    players: { [user.uid]: { name, seat: 1 } },
+    players: vsComputer
+      ? { [user.uid]: { name, seat: 1 }, cpu: { name: cpuName(), seat: 2, cpu: true } }
+      : { [user.uid]: { name, seat: 1 } },
     createdAt: serverTimestamp(),
   });
   return code;

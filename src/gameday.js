@@ -202,6 +202,13 @@ export function createGameDay(container, code, onLeave) {
   async function update(r) {
     room = r;
     const s = info();
+    // 1-player mode: the computer protects the first 4 bench players it drafted, and is ready at once.
+    const cpu = s.uids.find((u) => room.players[u].cpu);
+    if (cpu && !s.ready[cpu] && r.host === s.me) {
+      const bench = Object.values(room.picks || {}).filter((p) => p.by === cpu && BENCH.includes(p.slot))
+        .sort((a, b) => a.n - b.n).slice(0, RULES.BENCH_KEEP).map((p) => p.slot);
+      updateRoom(code, { [`ready/${cpu}`]: { keep: bench } }).catch(() => {});
+    }
     const bothReady = s.uids.length === 2 && s.uids.every((u) => s.ready[u]);
     if (!bothReady) { shownFor = null; return readyScreen(s); }
 
