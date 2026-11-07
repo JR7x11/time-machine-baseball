@@ -496,3 +496,55 @@ body.drafting .draft:has(.handheld) .team .hint { color: #6f6157; }
 @media (prefers-reduced-motion: reduce) {
   .derby-banner, .hr-ball, .flip-coin, .field-legend.legend-homer { animation: none !important; }
 }
+
+/* --- PATCH NOTES: CHANGELOG.md in VS Code, One Dark Pro colors (update 11) --- */
+.studio-links { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.code-editor {
+  --editor-font: "Cascadia Code", Consolas, "Fira Code", "Courier New", monospace;
+  margin-top: 10px; background: #282c34; border: 1px solid #181a1f; border-radius: 6px; overflow: hidden;
+  font-family: var(--editor-font); font-size: 13.5px; line-height: 1.65; color: #abb2bf;
+}
+.code-tabs { display: flex; align-items: center; background: #282c34; border-bottom: 1px solid #21252b; }
+.code-tab { padding: 6px 14px; color: #abb2bf; font-size: 13px; }
+.code-crumb { color: #7f848e; }
+.md-icon { color: #e06c75; font-weight: 600; }
+.code-lines { list-style: none; counter-reset: line; margin: 0; padding: 8px 0 12px; }
+.code-lines li { counter-increment: line; position: relative; padding: 0 14px 0 60px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.code-lines li::before {
+  content: counter(line); position: absolute; left: 0; width: 42px; text-align: right;
+  color: #495162; font-variant-numeric: tabular-nums;
+}
+.code-lines li:first-child::before { color: #abb2bf; }
+.md-h1 { color: #e06c75; font-weight: 600; }
+.md-h2 { color: #e06c75; font-weight: 600; }
+.md-date { color: #98c379; }
+.md-title { color: #d19a66; font-weight: 600; }
+.md-comment { color: #7f848e; font-style: italic; }
+.md-punct { color: #7f848e; }
+.md-text { color: #abb2bf; }
+.md-tag { font-weight: 600; }
+.tag-new { color: #98c379; }
+.tag-change { color: #e5c07b; }
+.tag-rule { color: #c678dd; }
+.tag-improved { color: #61afef; }
+.tag-fix { color: #e06c75; }
+@media (max-width: 480px) {
+  .code-editor { font-size: 12px; }
+  .code-lines li { padding-left: 46px; }
+  .code-lines li::before { width: 32px; }
+}
+
+/* patchNotes.js — JavaScript colors from One Dark Pro (update 11b) */
+.js-icon { color: #e5c07b; font-weight: 700; font-size: 11px; }
+.js-comment { color: #7f848e; font-style: italic; }
+.js-fn { color: #61afef; }
+.js-str { color: #98c379; }
+.js-kw { color: #c678dd; }
+.js-punct { color: #abb2bf; }
+.js-brace { color: #e5c07b; }  /* bracket pair colors */
+.js-brace2 { color: #c678dd; }
+/* indent guide, like VS Code's */
+.code-lines li.ind { padding-left: calc(60px + 2.4ch); background: linear-gradient(#3b4048, #3b4048) no-repeat 66px 0 / 1px 100%; }
+@media (max-width: 480px) {
+  .code-lines li.ind { padding-left: calc(46px + 2.4ch); background-position: 52px 0; }
+}
