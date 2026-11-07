@@ -123,7 +123,7 @@ function patchTab() {
 export function openRules(start = "rules") {
   returnFocus = document.activeElement;
   const body = el("div", { className: "rules-body" });
-  const title = el("h2", {});
+  const title = el("h2", {}, "RULES & FAQ");
   const tabs = [["rules", "RULES", rulesTab], ["faq", "FAQ", faqTab], ["patch", "PATCH NOTES", patchTab]];
   const buttons = tabs.map(([key, label]) => el("button", {
     className: "chip", type: "button", role: "tab", textContent: label, onclick: () => show(key),
@@ -131,7 +131,6 @@ export function openRules(start = "rules") {
   function show(key) {
     tabs.forEach(([k], i) => { buttons[i].classList.toggle("on", k === key); buttons[i].setAttribute("aria-selected", String(k === key)); });
     body.replaceChildren(...tabs.find(([k]) => k === key)[2]());
-    title.textContent = key === "patch" ? "PATCH NOTES" : "RULES & FAQ";
     body.scrollTop = 0;
   }
   const close = el("button", { className: "btn secondary", type: "button", onclick: closeRules }, "CLOSE");
@@ -149,8 +148,6 @@ export function openRules(start = "rules") {
 // Small footer for any screen: the studio tag + a RULES & FAQ link.
 export function studioFooter() {
   return el("div", { className: "studio-footer" },
-    el("div", { className: "studio-links" },
-      el("button", { className: "rules-link", type: "button", onclick: () => openRules() }, "RULES & FAQ"),
-      el("button", { className: "rules-link", type: "button", onclick: () => openRules("patch") }, "PATCH NOTES")),
+    el("button", { className: "rules-link", type: "button", onclick: () => openRules() }, "RULES & FAQ"),
     el("p", { className: "studio-tag" }, `— ${STUDIO} —`));
 }
