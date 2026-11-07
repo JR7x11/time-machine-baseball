@@ -1,6 +1,7 @@
 // RULES & FAQ screen and the Infinite M0b Studios tag. Shown from the home screen, the time machine,
 // the draft and game day. Everything here describes how the game actually plays (see score.js / draft.js).
 import { RULES, ROLES } from "./score.js";
+import { PATCH_NOTES } from "./patchnotes.js";
 
 export const STUDIO = "Infinite M0b Studios";
 
@@ -86,21 +87,56 @@ function faqTab() {
   ];
 }
 
+// PATCH NOTES, drawn like CHANGELOG.md open in VS Code (Dark+ colors, line numbers, editor font).
+let fontLoaded = false;
+function loadEditorFont() {
+  if (fontLoaded) return;
+  fontLoaded = true; // Fira Code for anyone without Cascadia Code / Consolas (VS Code's fonts on Windows)
+  document.head.append(el("link", { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" }));
+}
+function patchTab() {
+  loadEditorFont();
+  // Drawn as patchNotes.js in VS Code with the One Dark Pro theme.
+  const FN = { NEW: "added", CHANGE: "changed", RULE: "ruleChange", IMPROVED: "improved", FIX: "fixed" };
+  const t = (cls, text) => el("span", { className: cls }, text);
+  const str = (text) => t("js-str", JSON.stringify(text));
+  const lines = []; // [indented?, ...parts]
+  const add = (indent, ...parts) => lines.push({ indent, parts });
+  add(false, t("js-comment", "// Time Machine Baseball — Patch Notes (newest first)"));
+  for (const u of PATCH_NOTES) {
+    add(false);
+    add(false, t("js-comment", `// ----- ${u.title} -----`));
+    add(false, t("js-fn", "update"), t("js-brace", "("), str(u.version), t("js-punct", ", "), str(u.date),
+      t("js-punct", ", "), t("js-brace2", "()"), t("js-kw", " => "), t("js-brace2", "{"));
+    for (const [tag, text] of u.notes) {
+      add(true, t("js-fn", FN[tag] || "added"), t("js-brace2", "("), str(text), t("js-brace2", ")"), t("js-punct", ";"));
+    }
+    add(false, t("js-brace2", "}"), t("js-brace", ")"), t("js-punct", ";"));
+  }
+  add(false);
+  return [el("div", { className: "code-editor", role: "document", ariaLabel: "Patch notes" },
+    el("div", { className: "code-tabs" }, el("span", { className: "code-tab" }, el("span", { className: "js-icon" }, "JS"), " patchNotes.js ", el("span", { className: "code-crumb" }, "> …"))),
+    el("ol", { className: "code-lines" }, ...lines.map(({ indent, parts }) =>
+      el("li", { className: indent ? "ind" : "" }, ...(parts.length ? parts : ["\u00a0"])))))];
+}
+
 export function openRules(start = "rules") {
   returnFocus = document.activeElement;
   const body = el("div", { className: "rules-body" });
-  const tabs = [["rules", "RULES", rulesTab], ["faq", "FAQ", faqTab]];
+  const title = el("h2", {});
+  const tabs = [["rules", "RULES", rulesTab], ["faq", "FAQ", faqTab], ["patch", "PATCH NOTES", patchTab]];
   const buttons = tabs.map(([key, label]) => el("button", {
     className: "chip", type: "button", role: "tab", textContent: label, onclick: () => show(key),
   }));
   function show(key) {
     tabs.forEach(([k], i) => { buttons[i].classList.toggle("on", k === key); buttons[i].setAttribute("aria-selected", String(k === key)); });
     body.replaceChildren(...tabs.find(([k]) => k === key)[2]());
+    title.textContent = key === "patch" ? "PATCH NOTES" : "RULES & FAQ";
     body.scrollTop = 0;
   }
   const close = el("button", { className: "btn secondary", type: "button", onclick: closeRules }, "CLOSE");
   box.replaceChildren(el("div", { className: "modal-box rules-box", role: "dialog", ariaModal: "true", ariaLabel: "Rules and FAQ" },
-    el("h2", {}, "RULES & FAQ"),
+    title,
     el("div", { className: "filters", role: "tablist" }, ...buttons),
     body,
     close,
@@ -113,6 +149,8 @@ export function openRules(start = "rules") {
 // Small footer for any screen: the studio tag + a RULES & FAQ link.
 export function studioFooter() {
   return el("div", { className: "studio-footer" },
-    el("button", { className: "rules-link", type: "button", onclick: () => openRules() }, "RULES & FAQ"),
+    el("div", { className: "studio-links" },
+      el("button", { className: "rules-link", type: "button", onclick: () => openRules() }, "RULES & FAQ"),
+      el("button", { className: "rules-link", type: "button", onclick: () => openRules("patch") }, "PATCH NOTES")),
     el("p", { className: "studio-tag" }, `— ${STUDIO} —`));
 }
