@@ -7,6 +7,8 @@ const BUTTON_DELAY_MS = 600; // brief pause after the date lands, then the START
 const CREDIT = "The information used here was obtained free of charge from and is copyrighted by Retrosheet. " +
   "Interested parties may contact Retrosheet at www.retrosheet.org.";
 
+import { studioFooter } from "./rules.js";
+
 function el(tag, props = {}, ...children) {
   const e = document.createElement(tag);
   Object.assign(e, props);
@@ -65,7 +67,8 @@ export function showFlipClock(container, code, decade, targetDate, onDone) {
       startBtn,
       el("div", { className: "speaker-grille", ariaHidden: "true" }),
       el("p", { className: "handheld-caption" }, "TIME MACHINE ENGAGED"),
-      el("p", { className: "credit" }, CREDIT)));
+      el("p", { className: "credit" }, CREDIT),
+      studioFooter()));
 
   const fmt = (key, val) => key === "month" ? MONTHS[val - 1] : key === "day" ? String(val).padStart(2, "0") : String(val);
   const paint = (key, animate = true) =>

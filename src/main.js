@@ -3,6 +3,7 @@ import { signIn, createRoom, joinRoom, watchRoom, goOnline, myId, updateRoom } f
 import { createDraft } from "./draft.js";
 import { createGameDay } from "./gameday.js";
 import { randomDate, showFlipClock, clockSeen } from "./timetravel.js";
+import { studioFooter } from "./rules.js";
 
 const app = document.querySelector("#app") || document.body;
 let stopWatching = null;
@@ -79,7 +80,8 @@ function show(...children) {
   app.replaceChildren(
     el("div", { className: "screen" },
       el("h1", { className: "title" }, "TIME MACHINE", el("br"), "BASEBALL"),
-      ...children)
+      ...children,
+      studioFooter())
   );
 }
 

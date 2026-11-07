@@ -2,7 +2,8 @@
 // play-by-play innings 1–6 (NEXT / SKIP) → 7th inning stretch → late innings → final.
 // Click any player in a box score to see his real game that day.
 import { myId, updateRoom } from "./firebase.js";
-import { playGame, shuffleTeams, teamFromPicks, RULES, POSITIONS, BENCH } from "./score.js";
+import { studioFooter } from "./rules.js";
+import { playGame, shuffleTeams, teamFromPicks, derbyHomers, RULES, POSITIONS, BENCH } from "./score.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const prettyDate = (d) => `${MONTHS[Math.floor(d / 100) % 100 - 1]} ${d % 100}, ${Math.floor(d / 10000)}`;
@@ -135,6 +136,15 @@ export function createGameDay(container, code, onLeave) {
     } catch { /* Audio is optional; gameplay never depends on it. */ }
   }
 
+  // Tiebreaker sounds (only play when SOUND is on, like every other beep).
+  function homerSound() {
+    [520, 660, 780, 1040].forEach((f, i) => setTimeout(() => beep(f, 0.09), i * 90));
+  }
+  function drumroll() {
+    for (let i = 0; i < 14; i++) setTimeout(() => beep(150 + (i % 2) * 20, 0.03), i * 55);
+    setTimeout(() => beep(880, 0.25), 14 * 55 + 80);
+  }
+
   function cancelClock() {
     if (clockTimer != null) { clearTimeout(clockTimer); clockTimer = null; }
     if (clockResolve) { const done = clockResolve; clockResolve = null; done(); }
@@ -174,7 +184,7 @@ export function createGameDay(container, code, onLeave) {
     el("h1", { className: "title small" }, "TIME MACHINE BASEBALL"),
     el("p", { className: "roomcode" }, `ROOM ${code} · THE ${(room?.decade || "1990s").toUpperCase()}`));
   const leaveBtn = () => el("button", { className: "btn secondary", onclick: onLeave }, "LEAVE");
-  const credit = () => el("p", { className: "credit" }, CREDIT);
+  const credit = () => el("div", {}, el("p", { className: "credit" }, CREDIT), studioFooter());
 
   function info() {
     const me = myId(room);
@@ -283,13 +293,14 @@ export function createGameDay(container, code, onLeave) {
     message("Loading " + prettyDate(r.gameDate) + "...");
     try {
       const year = String(r.gameDate).slice(0, 4);
-      const [day, pitching] = await Promise.all([
+      const [day, pitching, week] = await Promise.all([
         getJSON(`/data/${year}/days/${r.gameDate}.json`),
         getJSON(`/data/${year}/pitching.json`),
+        derbyWeek(r.gameDate),
       ]);
       if (!destroyed && shownFor === r.gameDate) {
         middle.classList.remove("time-travel");
-        play(s, day, pitching);
+        play(s, day, pitching, week);
       }
     } catch (e) {
       cancelClock();
@@ -299,7 +310,20 @@ export function createGameDay(container, code, onLeave) {
   }
 
   // ---------- the game ----------
-  function play(s, day, pitching) {
+  // Day files for the Home Run Derby week (game day ± DERBY_WINDOW_DAYS), only dates that had games.
+  async function derbyWeek(date) {
+    const { years } = await getJSON("/data/index.json");
+    const base = new Date(Math.floor(date / 10000), Math.floor(date / 100) % 100 - 1, date % 100);
+    const wanted = [];
+    for (let i = -RULES.DERBY_WINDOW_DAYS; i <= RULES.DERBY_WINDOW_DAYS; i++) {
+      const d = new Date(base); d.setDate(d.getDate() + i);
+      const key = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+      if (years[d.getFullYear()]?.includes(key)) wanted.push(`/data/${d.getFullYear()}/days/${key}.json`);
+    }
+    return Promise.all(wanted.map(getJSON));
+  }
+
+  function play(s, day, pitching, week) {
     middle.classList.add("handheld");
     lastFieldRuns = { A: 0, B: 0 };
     const [uA, uB] = s.uids;                  // A = home (started the game), B = visitors
@@ -361,8 +385,8 @@ export function createGameDay(container, code, onLeave) {
         onclick: () => openBench(key), ariaLabel: `View ${name[key]}'s bench` }, "BENCH"));
     }
 
-    const mid = playGame(teams, day, pitching, date, seed, 6);
-    const full = playGame(teams, day, pitching, date, seed, 9);
+    const mid = playGame(teams, day, pitching, date, seed, 6, week);
+    const full = playGame(teams, day, pitching, date, seed, 9, week);
     const pitchNet = (side) => side.parts.allowed - side.parts.ks - side.parts.cs;
     const names = (list) => list.filter((p) => p.p && p.outs).map((p) => p.p.name.split(" ").pop()).join(", ") || "nobody";
 
@@ -402,8 +426,64 @@ export function createGameDay(container, code, onLeave) {
       return cum;
     };
 
+    // ---------- tiebreaker: played out step by step instead of jumping to FINAL ----------
+    const tieSteps = [];
+    if (full.decidedBy !== "runs") {
+      const UP = (k) => name[k].toUpperCase();
+      const winner = full.winner, loser = opp(full.winner);
+      const tally = { A: 0, B: 0 };
+      const push = (text, caption, active = "B", fx = {}) =>
+        tieSteps.push({ text, caption, active, fx, tally: { A: { runs: tally.A, stranded: 0 }, B: { runs: tally.B, stranded: 0 } } });
+      push(`TIED ${full.A.runs}–${full.B.runs} AFTER 9! IT'S A HOME RUN DERBY!`, "TIEBREAKER · ROUND 1: BENCH SLUGGERS WHO SAT");
+      // Round 1: bench players who sat because their starter played — their real homers that week.
+      for (const k of ["B", "A"]) {
+        const sat = full[k].hitters.map((h) => [h, derbyHomers(h, week?.length ? week : [day])]).filter(([, hr]) => hr != null);
+        if (!sat.length) push(`${UP(k)}'S BENCH: NOBODY ELIGIBLE — 0 HOMERS`, "ROUND 1: BENCH SLUGGERS", k);
+        for (const [h, hr] of sat) {
+          tally[k] += hr;
+          push(`${UP(k)} · ${h.pos} ${h.backup.name.toUpperCase()} · ${hr ? hr + (hr > 1 ? " HOMERS" : " HOMER") + " THIS WEEK!" : "NO HOMERS THIS WEEK"}`,
+            "ROUND 1: BENCH SLUGGERS · SCOREBOARD = DERBY HOMERS", k, { homer: hr > 0 });
+        }
+      }
+      tally.A = full.A.derby; tally.B = full.B.derby; // the official count
+      if (full.decidedBy === "derby") {
+        push(`${UP(winner)} WINS THE HOME RUN DERBY, ${full[winner].derby}–${full[loser].derby}!`, "TIEBREAKER DECIDED", winner);
+      } else {
+        push(`DERBY TIED ${full.A.derby}–${full.B.derby}! ROUND 2: STARTERS' HOMERS`, "TIEBREAKER · ROUND 2: STARTERS' HOMERS");
+        // Round 2: homers by each lineup that day.
+        for (const k of ["B", "A"]) {
+          const hitters = full[k].hitters.filter((h) => h.line && h.line[4]);
+          tally[k] = full[k].starterHR;
+          push(`${UP(k)}'S LINEUP: ${full[k].starterHR} HOMER${full[k].starterHR === 1 ? "" : "S"}` +
+            (hitters.length ? ` (${hitters.map((h) => h.used.name.split(" ").pop().toUpperCase()).join(", ")})` : ""),
+            "ROUND 2: STARTERS' HOMERS · SCOREBOARD = HOMERS", k);
+        }
+        if (full.decidedBy === "starterHR") {
+          push(`${UP(winner)} WINS ON STARTERS' HOMERS, ${full[winner].starterHR}–${full[loser].starterHR}!`, "TIEBREAKER DECIDED", winner);
+        } else {
+          push("STILL TIED! FLIPPING A COIN...", "TIEBREAKER · ROUND 3: COIN FLIP", "B", { coin: true });
+          push(`THE COIN LANDS FOR ${UP(winner)}!`, "TIEBREAKER DECIDED", winner);
+        }
+      }
+    }
+
     const draw = () => {
-      if (stage === "pbp1" || stage === "pbp2") {
+      if (stage === "tiebreak") {
+        const st = tieSteps[Math.min(step, tieSteps.length - 1)];
+        if (st.fx.homer) homerSound();
+        if (st.fx.coin) drumroll();
+        middle.replaceChildren(...handheldView(st.tally, name, st.text,
+          `${st.caption} · ${Math.min(step, tieSteps.length - 1) + 1} OF ${tieSteps.length}`,
+          [el("button", { className: "handheld-button blue", onclick: () => { beep(340); step = tieSteps.length - 1; draw(); } }, "SKIP"),
+           el("button", { className: "handheld-button orange next-button", onclick: () => {
+             beep(580); step++;
+             if (step >= tieSteps.length) { stage = "final"; step = 0; }
+             draw();
+           } }, step >= tieSteps.length - 1 ? "FINAL ▸" : "NEXT ▸")],
+          st.active, { banner: "HOME RUN DERBY", ...st.fx }));
+        livePanel(left, mine, full, part2, part2.length, true);
+        livePanel(right, theirs, full, part2, part2.length, true);
+      } else if (stage === "pbp1" || stage === "pbp2") {
         const steps = stage === "pbp1" ? part1 : part2;
         const base = stage === "pbp1" ? { A: 0, B: 0 } : sumSteps(part1, part1.length);
         const cum = sumSteps(steps, step);
@@ -435,7 +515,10 @@ export function createGameDay(container, code, onLeave) {
     };
     const advance = () => {
       const steps = stage === "pbp1" ? part1 : part2;
-      if (step > steps.length) { stage = stage === "pbp1" ? "stretch" : "final"; step = 0; }
+      if (step > steps.length) {
+        stage = stage === "pbp1" ? "stretch" : tieSteps.length ? "tiebreak" : "final";
+        step = 0;
+      }
       draw();
     };
 
@@ -462,7 +545,7 @@ export function createGameDay(container, code, onLeave) {
     draw();
   }
 
-  function renderField(runners, scored = false) {
+  function renderField(runners, scored = false, fx = {}) {
     const lights = [runners >= 1, runners >= 2, runners >= 3];
     const dot = (cx, cy, on) => on ? `<circle cx="${cx}" cy="${cy}" r="5.5" fill="#ff3932" stroke="#fff1d6" stroke-width="1.5" class="base-lit"/>` : "";
     return el("div", { className: "field-window" + (scored && !reduceMotion() ? " field-scored" : "") },
@@ -480,20 +563,24 @@ export function createGameDay(container, code, onLeave) {
           <rect x="69" y="158" width="12" height="12" transform="rotate(45 75 164)" fill="#f8fff4"/>
           <path d="M171 247 L180 256 L189 247 L180 239 Z" fill="#fcfff4"/>
           ${dot(285,164,lights[0])}${dot(180,58,lights[1])}${dot(75,164,lights[2])}
+          ${fx.homer ? '<g class="hr-ball"><circle cx="180" cy="240" r="7" fill="#fffef6" stroke="#ff3932" stroke-width="2"/></g>' : ""}
+          ${fx.coin ? '<g class="flip-coin"><circle cx="180" cy="150" r="30" fill="#e8b84a" stroke="#9c6b1e" stroke-width="4"/><text x="180" y="160" text-anchor="middle" font-size="26" font-weight="900" fill="#8a5a14" font-family="Arial">TMB</text></g>' : ""}
           </svg>` }),
-        el("div", { className: "field-legend" }, `${runners} RUNNER${runners === 1 ? "" : "S"} ON BASE`)));
+        el("div", { className: "field-legend" + (fx.homer ? " legend-homer" : "") },
+          fx.homer ? "GONE! HOME RUN!" : fx.coin ? "HEADS OR TAILS..." : fx.banner ? "TIEBREAKER" : `${runners} RUNNER${runners === 1 ? "" : "S"} ON BASE`)));
   }
 
-  function handheldView(lines, name, tickerText, caption, buttons, activeKey = "B") {
+  function handheldView(lines, name, tickerText, caption, buttons, activeKey = "B", fx = {}) {
     const score = lines[activeKey];
     const scored = lines.A.runs > lastFieldRuns.A || lines.B.runs > lastFieldRuns.B;
     lastFieldRuns = { A: lines.A.runs, B: lines.B.runs };
     return [header(),
-      el("div", { className: "handheld-score-window" },
+      el("div", { className: "handheld-score-window" + (fx.banner ? " derby" : "") },
+        fx.banner ? el("div", { className: "derby-banner" }, fx.banner) : null,
         el("div", { className: "handheld-date" }, ledDate(room.gameDate)),
         scoreboard(lines, name),
         el("div", { className: "ticker", role: "status", ariaLive: "polite" }, tickerText)),
-      renderField(score.stranded, scored),
+      renderField(fx.banner ? 0 : score.stranded, scored || !!fx.homer, fx),
       el("div", { className: "pbp-buttons" }, ...buttons, soundButton()),
       el("div", { className: "speaker-grille", ariaHidden: "true" }),
       el("p", { className: "handheld-caption" }, caption),

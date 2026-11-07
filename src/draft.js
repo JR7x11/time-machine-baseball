@@ -3,6 +3,7 @@
 // and pitchers by role: SP (5 inn), RP1 (2), RP2 (1), CL (1), plus a SPARE who fills in.
 import { myId, makePick, updateRoom } from "./firebase.js";
 import { POSITIONS, BENCH, PITCH_SLOTS, ALL_SLOTS, teamFromPicks } from "./score.js";
+import { studioFooter } from "./rules.js";
 
 const OUTFIELD = ["LF", "CF", "RF"];
 const MIN_GAMES = 10; // games at a position (in the 1990s) to be allowed to play it
@@ -125,6 +126,7 @@ export function createDraft(container, code, onLeave) {
         el("p", { className: "credit" },
           "The information used here was obtained free of charge from and is copyrighted by Retrosheet. " +
           "Interested parties may contact Retrosheet at www.retrosheet.org."),
+        studioFooter(),
       ),
       theirsBox,
     )
@@ -282,24 +284,35 @@ export function createDraft(container, code, onLeave) {
   function fits(p, slot) {
     return PITCH_SLOTS.includes(slot) ? p.elig.has("P") : p.elig.has(slot.replace(" BN", ""));
   }
+  // Prefer players who were in the majors in the game's year (the date is known before the draft),
+  // so auto-picks don't go 0-for on game day. Falls back to everyone if nobody fits.
+  function activeInGameYear(p) {
+    const yr = room?.gameDate ? Math.floor(room.gameDate / 10000) : null;
+    return !yr || !p.y || (p.y[0] <= yr && yr <= p.y[1]);
+  }
   function bestFor(slot, s, choices = 1) {
-    const top = pool.filter((p) => !s.taken.has(p.id) && fits(p, slot))
-      .sort((a, b) => value(b, slot) - value(a, slot)).slice(0, choices);
+    let options = pool.filter((p) => !s.taken.has(p.id) && fits(p, slot));
+    const active = options.filter(activeInGameYear);
+    if (active.length) options = active;
+    const top = options.sort((a, b) => value(b, slot) - value(a, slot)).slice(0, choices);
     return top[Math.floor(Math.random() * top.length)];
   }
 
-  // Best available player for my first open spot.
+  // AUTO-DRAFT: best available for starters; one of the top 5 for bench spots and backup
+  // pitchers, so the same names don't land on the bench every game.
   function autoPick() {
     const s = state();
     if (!auto || busy || s.done || s.onClock !== s.me) return;
     const myTeam = s.teams[s.me] || {};
     const slot = SLOTS.find((x) => !myTeam[x]);
     if (!slot) return;
-    const best = bestFor(slot, s);
+    const deep = slot.endsWith(" BN") || slot === "RP2" || slot === "SPARE";
+    const best = bestFor(slot, s, deep ? 5 : 1);
     if (best) pick(best, slot);
   }
 
-  // The computer manager: fills spots in a sensible order, picking one of the top 3 for variety.
+  // The computer manager: fills spots in a sensible order. For variety it picks one of the top 5
+  // for starters and one of the top 12 for bench spots and backup pitchers.
   const CPU_ORDER = ["SP", "C", "SS", "CF", "1B", "2B", "3B", "LF", "RF", "CL", "RP1",
     "C BN", "SS BN", "CF BN", "1B BN", "2B BN", "3B BN", "LF BN", "RF BN", "RP2", "SPARE"];
   function cpuPick() {
@@ -309,7 +322,8 @@ export function createDraft(container, code, onLeave) {
     const team = s.teams[cpu] || {};
     const slot = CPU_ORDER.find((x) => !team[x]) ?? SLOTS.find((x) => !team[x]);
     if (!slot) return;
-    const choice = bestFor(slot, s, 3);
+    const deep = slot.endsWith(" BN") || slot === "RP2" || slot === "SPARE";
+    const choice = bestFor(slot, s, deep ? 12 : 5);
     if (choice) pick(choice, slot, cpu);
   }
 

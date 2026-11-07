@@ -8,6 +8,7 @@ export const RULES = {
   K_MINUS: 1,  // each strikeout by the opposing pitcher takes away a base
   CS_MINUS: 1, // each runner caught stealing by the opposing catcher takes away a base
   BENCH_KEEP: 4, // bench players each manager protects from the shuffle (plus his SP)
+  DERBY_WINDOW_DAYS: 3, // Home Run Derby counts bench homers this many days either side of game day
 };
 
 export const POSITIONS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"];
@@ -109,7 +110,18 @@ function staff(team, pitching, date, maxOuts) {
 
 // teams: { A: {slot: pick}, B: {slot: pick} } → result for both sides.
 // innings: 9 for the whole game, 6 for the 7th inning stretch.
-export function playGame(teams, day, pitching, date, seed = "", innings = 9) {
+// Home Run Derby: a bench player who sat because his starter played on game day.
+// Returns his homers over the derby week (game day ± DERBY_WINDOW_DAYS), or null if he isn't eligible
+// (his starter didn't play, or he had no games that week). `week` = the day files for that week.
+export function derbyHomers(h, week) {
+  if (!h.used || h.used !== h.starter || !h.backup) return null;
+  const games = week.map((d) => d?.b?.[h.backup.pid]).filter(Boolean);
+  return games.length ? games.reduce((t, r) => t + (r[4] || 0), 0) : null;
+}
+
+// week (optional): day files for the derby week; without it the derby uses game day only.
+export function playGame(teams, day, pitching, date, seed = "", innings = 9, week = null) {
+  const derbyWeek = week?.length ? week : [day];
   const maxOuts = innings * 3;
   const share = innings / 9; // hitters' day is spread evenly over 9 innings
   const side = {};
@@ -129,10 +141,7 @@ export function playGame(teams, day, pitching, date, seed = "", innings = 9) {
     s.runs = Math.floor(total / RULES.BASES_PER_RUN);
     s.stranded = total % RULES.BASES_PER_RUN;
     s.outs = s.pitchers.reduce((t, p) => t + p.outs, 0);
-    s.derby = s.hitters.reduce((t, h) => {
-      const benchUnused = h.used === h.starter && h.backup && day.b[h.backup.pid];
-      return t + (benchUnused ? day.b[h.backup.pid][4] : 0);
-    }, 0);
+    s.derby = s.hitters.reduce((t, h) => t + (derbyHomers(h, derbyWeek) ?? 0), 0);
     s.starterHR = s.hitters.reduce((t, h) => t + (h.line ? h.line[4] : 0), 0);
   }
 

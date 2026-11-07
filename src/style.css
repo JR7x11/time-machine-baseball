@@ -448,3 +448,51 @@ body.drafting .draft:has(.handheld) .team .hint { color: #6f6157; }
 /* START THE DRAFT button under the flip clock: same orange as NEXT. */
 .middle.handheld .btn.start-draft { display: block; width: min(100%, 320px); margin: 22px auto 0; background: #e76033; box-shadow: inset 0 3px 3px #ffffff55, inset 0 -3px 4px #832b0e80, 0 5px 0 #a23a19, 0 7px 5px #0004; border: 2px solid #dfcdb6; font-family: Arial, Helvetica, sans-serif; font-weight: 900; letter-spacing: .1em; }
 .middle.handheld .btn.start-draft[hidden] { display: none; }
+
+/* --- RULES & FAQ + studio tag (update 9) --- */
+.studio-footer { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 14px; }
+.rules-link { font: inherit; font-size: 12px; letter-spacing: .14em; font-weight: bold; color: #ffb74d; background: none; border: 1px solid currentColor; border-radius: 999px; padding: 8px 16px; min-height: 36px; cursor: pointer; }
+.rules-link:hover { background: #ffb74d22; }
+.rules-link:focus-visible { outline: 3px solid #ffb74d; outline-offset: 2px; }
+.studio-tag { margin: 2px 0 0; font-size: 11px; letter-spacing: .16em; color: #9a9580; }
+.middle.handheld .rules-link { color: #a6492a; }
+.middle.handheld .rules-link:hover { background: #a6492a18; }
+.middle.handheld .studio-tag { color: #7c6e5b; }
+.rules-modal { z-index: 95; }
+.rules-box { max-width: 640px; max-height: 88vh; display: flex; flex-direction: column; text-align: left; }
+.rules-box h2 { text-align: center; color: #ffdd83; letter-spacing: .12em; }
+.rules-box .filters { margin: 8px 0 4px; }
+.rules-box .studio-tag { text-align: center; }
+.rules-body { overflow-y: auto; padding: 0 4px 6px; color: #e8e2c8; font-size: 14px; line-height: 1.55; }
+.rules-body h3 { color: #ff7959; font-size: 13px; letter-spacing: .14em; margin: 18px 0 6px; }
+.rules-body ol, .rules-body ul { padding-left: 22px; margin: 0; }
+.rules-body li { margin: 4px 0; }
+.rules-body strong { color: #ffdd83; }
+.rules-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rules-table td { padding: 6px 4px; border-bottom: 1px dashed #333; }
+.rules-table td.num { text-align: right; white-space: nowrap; color: #7cfc7c; font-variant-numeric: tabular-nums; }
+.faq { border-bottom: 1px dashed #333; padding: 8px 0; }
+.faq summary { cursor: pointer; color: #ffdd83; font-weight: bold; }
+.faq p { margin: 8px 0 2px; }
+
+/* --- Home Run Derby tiebreaker (update 10) --- */
+.derby-banner {
+  font: 900 clamp(18px, 3vw, 26px) Arial, Helvetica, sans-serif; letter-spacing: .22em; text-align: center;
+  color: #ffd23f; text-shadow: 0 0 10px #ffd23fcc, 0 0 22px #ff7a1a88;
+  padding: 10px 4px 6px; border-radius: 8px 8px 0 0;
+  animation: derby-flash 0.9s steps(2, start) infinite;
+}
+@keyframes derby-flash { 50% { color: #ff5a3c; text-shadow: 0 0 12px #ff5a3ccc; } }
+.handheld-score-window.derby .handheld-date { border-radius: 0; padding-top: 2px; }
+.hr-ball { animation: hr-fly 1.3s cubic-bezier(.25,.6,.3,1) infinite; transform-box: view-box; transform-origin: 180px 240px; }
+@keyframes hr-fly {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  70% { transform: translate(110px, -215px) scale(.55); opacity: 1; }
+  100% { transform: translate(130px, -250px) scale(.4); opacity: 0; }
+}
+.flip-coin { transform-origin: 180px 150px; transform-box: view-box; animation: coin-spin .5s linear infinite; }
+@keyframes coin-spin { 0% { transform: scaleX(1); } 50% { transform: scaleX(.08); } 100% { transform: scaleX(1); } }
+.field-legend.legend-homer { color: #ffd23f; text-shadow: 0 0 8px #ffd23f; animation: derby-flash .5s steps(2, start) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .derby-banner, .hr-ball, .flip-coin, .field-legend.legend-homer { animation: none !important; }
+}
