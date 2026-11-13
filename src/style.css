@@ -627,3 +627,10 @@ body.phone .pool { max-height: none; overflow: visible; }
 .tray-slots { display: flex; flex-wrap: wrap; gap: 6px; }
 .tray-slots .chip.pick { min-height: 44px; padding: 0 14px; }
 .chip.pick.on { background: #7cfc7c; color: #0f2a0f; border-color: #7cfc7c; }
+/* Phone: LEAVE (back to the home screen: START A GAME / PLAY THE COMPUTER / JOIN) sits at the top of the screen. */
+body.phone .draft[data-pane="list"] > .middle,
+body.phone .draft[data-pane="game"] > .middle { display: flex; flex-direction: column; }
+body.phone .draft > .middle > .btn.secondary {
+  order: -1; align-self: flex-end; width: auto; min-height: 40px; margin: 0 0 8px; padding: 8px 18px;
+  font-size: 12px; letter-spacing: .14em;
+}
