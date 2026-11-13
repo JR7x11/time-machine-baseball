@@ -634,3 +634,11 @@ body.phone .draft > .middle > .btn.secondary {
   order: -1; align-self: flex-end; width: auto; min-height: 40px; margin: 0 0 8px; padding: 8px 18px;
   font-size: 12px; letter-spacing: .14em;
 }
+
+/* No zooming while playing: no double-tap zoom on buttons, and text boxes are at least 16px
+   (iPhones zoom in on any text box smaller than that). */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, a, input, select, label, .pcard { touch-action: manipulation; }
+@media (max-width: 600px) {
+  input, select, textarea { font-size: 16px !important; }
+}
