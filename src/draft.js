@@ -49,6 +49,25 @@ function loadPool(decade) {
   return pools[decade];
 }
 
+// The game year's 15 best starters (by strikeouts that season), for the computer's and AUTODRAFT's SP pick,
+// so the same decade aces don't start every game. Built from <year>/pitching.json (every real outing).
+const seasons = {};
+function loadSeasonAces(year) {
+  seasons[year] ??= fetch(`/data/${year}/pitching.json`)
+    .then((r) => { if (!r.ok) throw new Error("no season file"); return r.json(); })
+    .then((rows) => {
+      const list = [];
+      for (const [id, games] of Object.entries(rows)) {
+        let k = 0, gs = 0;
+        for (const g of games) { k += g[6] || 0; gs += g[9] || 0; } // [date, outs, H, HR, BB, HBP, K, WP, BK, GS]
+        if (gs >= 10) list.push({ id, k, gs });
+      }
+      return list.sort((a, b) => b.k - a.k).map((x) => x.id); // best first; callers take the top 15 still available
+    })
+    .catch(() => { delete seasons[year]; return null; });
+  return seasons[year];
+}
+
 // ---------- sortable stat table ----------
 const f3 = (v) => (v == null ? "—" : v.toFixed(3).replace(/^0/, ""));
 const f2 = (v) => (v == null ? "—" : v.toFixed(2));
@@ -91,6 +110,8 @@ export function createDraft(container, code, onLeave) {
   // Phones: one pane at a time + handheld buttons. Tap a player, tap a spot, press DRAFT.
   const phone = isPhone();
   let selPid = null, selSlot = null;
+  let destroyed = false; // after the draft screen closes, no leftover timer may make a pick
+  let seasonAces = null;  // ids of the game year's starters, most strikeouts first (see loadSeasonAces)
 
   // ----- build the layout once -----
   const mineBox = el("section", { className: "team" });
@@ -157,6 +178,7 @@ export function createDraft(container, code, onLeave) {
       decadeTag.append(el("br"), el("span", { className: "draft-gamedate" },
         `GAME DAY: ${MON[Math.floor(d / 100) % 100 - 1]} ${d % 100}, ${Math.floor(d / 10000)}`));
     }
+    if (room.gameDate) loadSeasonAces(Math.floor(room.gameDate / 10000)).then((ids) => { seasonAces = ids; });
     loadPool(decade).then((p) => { pool = p; poolLoading = false; render(); })
       .catch((e) => { poolLoading = false; message = e.message; render(); });
   }
@@ -373,7 +395,20 @@ export function createDraft(container, code, onLeave) {
     const yr = room?.gameDate ? Math.floor(room.gameDate / 10000) : null;
     return !yr || !p.y || (p.y[0] <= yr && yr <= p.y[1]);
   }
+  // SP for the computer and AUTODRAFT: a random one of the 15 best starters still available from the game's season.
+  function seasonStarter(s) {
+    if (!seasonAces) return null;
+    const byId = new Map(pool.map((p) => [p.id, p]));
+    const top = [];
+    for (const id of seasonAces) {
+      const p = byId.get(id);
+      if (p && !s.taken.has(p.id) && p.elig.has("P")) top.push(p);
+      if (top.length === 15) break;
+    }
+    return top.length ? top[Math.floor(Math.random() * top.length)] : null;
+  }
   function bestFor(slot, s, choices = 1) {
+    if (slot === "SP") { const ace = seasonStarter(s); if (ace) return ace; }
     let options = pool.filter((p) => !s.taken.has(p.id) && fits(p, slot));
     const active = options.filter(activeInGameYear);
     if (active.length) options = active;
@@ -384,6 +419,7 @@ export function createDraft(container, code, onLeave) {
   // AUTO-DRAFT: best available for starters; one of the top 5 for bench spots and backup
   // pitchers, so the same names don't land on the bench every game.
   function autoPick() {
+    if (destroyed) return;
     const s = state();
     if (!auto || busy || s.done || s.onClock !== s.me) return;
     const myTeam = s.teams[s.me] || {};
@@ -399,6 +435,7 @@ export function createDraft(container, code, onLeave) {
   const CPU_ORDER = ["SP", "C", "SS", "CF", "1B", "2B", "3B", "LF", "RF", "CL", "RP1",
     "C BN", "SS BN", "CF BN", "1B BN", "2B BN", "3B BN", "LF BN", "RF BN", "RP2", "SPARE"];
   function cpuPick() {
+    if (destroyed) return;
     const s = state();
     const cpu = s.onClock;
     if (busy || s.done || !s.players[cpu]?.cpu || room.host !== s.me) return;
@@ -412,6 +449,7 @@ export function createDraft(container, code, onLeave) {
 
   // ----- making a pick (for me, or for the computer) -----
   async function pick(player, slot, forWho) {
+    if (destroyed) return;
     const s = state();
     const who = forWho ?? s.me;
     if (busy || s.done || s.onClock !== who || s.taken.has(player.id)) return;
@@ -432,6 +470,6 @@ export function createDraft(container, code, onLeave) {
 
   return {
     update(r) { room = r; render(); },
-    destroy() { document.body.classList.remove("drafting"); pad?.destroy(); },
+    destroy() { destroyed = true; document.body.classList.remove("drafting"); pad?.destroy(); },
   };
 }

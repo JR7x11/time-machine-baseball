@@ -642,3 +642,14 @@ button, a, input, select, label, .pcard { touch-action: manipulation; }
 @media (max-width: 600px) {
   input, select, textarea { font-size: 16px !important; }
 }
+
+/* Pitching staff: drag a pitcher by the ☰ grip to another role (role labels stay put). */
+.staff-slot { display: flex; gap: 6px; min-width: 0; transition: transform .15s ease; }
+.staff-slot .lineup-pick { flex: 1; min-width: 0; }
+.staff-slot.dragging { transition: none; position: relative; z-index: 3; box-shadow: 0 8px 18px #000a; border-radius: 10px; }
+.drag-grip {
+  flex-shrink: 0; width: 44px; min-height: 44px; border-radius: 10px; border: 1px solid #444; background: #202020;
+  color: #9a9580; font-size: 18px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.drag-grip:active { cursor: grabbing; color: #ffb74d; border-color: #ffb74d; }
+.drag-grip:focus-visible { outline: 3px solid #ffb74d; outline-offset: 2px; }

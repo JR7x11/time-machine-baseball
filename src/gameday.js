@@ -351,20 +351,70 @@ export function createGameDay(container, code, onLeave) {
     // Pitching staff: tap one pitcher, then another, to swap their roles. Names only — no stats.
     staffOrder ??= [...PITCH_SLOTS];
     const ROLE_NOTE = { SP: "starts · innings 1–5", RP1: "6th–7th", RP2: "8th", CL: "closes · 9th", SPARE: "fills in if one didn't pitch" };
+    // Each row: the role stays put on the left; the pitcher (name + ☰ grip) can be dragged to another role,
+    // or tapped and then another tapped to swap. Dragging moves him and slides the others up or down.
+    const slots = [];
     const staffRows = PITCH_SLOTS.map((role, i) => {
       const pick = team[staffOrder[i]];
-      return el("div", { className: "lineup-row staff-row" },
-        el("span", { className: "slot" }, role),
-        el("button", {
-          type: "button", className: "chip lineup-pick" + (staffPick === i ? " on" : ""), disabled: !pick,
-          ariaPressed: String(staffPick === i),
-          onclick: () => {
-            if (staffPick == null) staffPick = i;
-            else { if (staffPick !== i) [staffOrder[staffPick], staffOrder[i]] = [staffOrder[i], staffOrder[staffPick]]; staffPick = null; }
-            lineupScreen(info(), room.lineup || {});
-          },
-        }, pick?.name ?? "—", el("small", {}, ROLE_NOTE[role])));
+      const nameBtn = el("button", {
+        type: "button", className: "chip lineup-pick" + (staffPick === i ? " on" : ""), disabled: !pick,
+        ariaPressed: String(staffPick === i),
+        onclick: () => {
+          if (staffPick == null) staffPick = i;
+          else { if (staffPick !== i) [staffOrder[staffPick], staffOrder[i]] = [staffOrder[i], staffOrder[staffPick]]; staffPick = null; }
+          lineupScreen(info(), room.lineup || {});
+        },
+      }, pick?.name ?? "—", el("small", {}, ROLE_NOTE[role]));
+      const grip = el("button", { type: "button", className: "drag-grip", ariaLabel: `Drag ${pick?.name ?? "pitcher"} to another role`,
+        title: "Drag to change his role" }, "☰");
+      grip.addEventListener("pointerdown", (e) => startDrag(e, i));
+      // Keyboard: arrow keys move him up or down one role.
+      grip.addEventListener("keydown", (e) => {
+        const to = e.key === "ArrowUp" ? i - 1 : e.key === "ArrowDown" ? i + 1 : null;
+        if (to == null || to < 0 || to >= PITCH_SLOTS.length) return;
+        e.preventDefault(); moveStaff(i, to);
+        middle.querySelectorAll(".drag-grip")[to]?.focus();
+      });
+      const slot = el("div", { className: "staff-slot" }, nameBtn, grip);
+      slots.push(slot);
+      return el("div", { className: "lineup-row staff-row" }, el("span", { className: "slot" }, role), slot);
     });
+    function moveStaff(from, to) {
+      const [who] = staffOrder.splice(from, 1);
+      staffOrder.splice(to, 0, who);
+      staffPick = null;
+      lineupScreen(info(), room.lineup || {});
+    }
+    function startDrag(e, from) {
+      e.preventDefault();
+      const grip = e.currentTarget;
+      try { grip.setPointerCapture(e.pointerId); } catch { /* older browsers */ }
+      const tops = slots.map((sl) => sl.getBoundingClientRect().top);
+      const step = tops.length > 1 ? tops[1] - tops[0] : 56;
+      const y0 = e.clientY;
+      let to = from;
+      slots[from].classList.add("dragging");
+      const move = (ev) => {
+        const dy = ev.clientY - y0;
+        slots[from].style.transform = `translateY(${dy}px)`;
+        to = Math.max(0, Math.min(slots.length - 1, from + Math.round(dy / step)));
+        slots.forEach((sl, k) => {
+          if (k === from) return;
+          const shift = from < to && k > from && k <= to ? -step : from > to && k < from && k >= to ? step : 0;
+          sl.style.transform = shift ? `translateY(${shift}px)` : "";
+        });
+      };
+      const up = () => {
+        grip.removeEventListener("pointermove", move);
+        grip.removeEventListener("pointerup", up);
+        grip.removeEventListener("pointercancel", up);
+        if (to !== from) moveStaff(from, to);
+        else { slots.forEach((sl) => (sl.style.transform = "")); slots[from].classList.remove("dragging"); }
+      };
+      grip.addEventListener("pointermove", move);
+      grip.addEventListener("pointerup", up);
+      grip.addEventListener("pointercancel", up);
+    }
     // Designated hitter: one of the bench outfielders (after the starter/backup swaps above), names only.
     const swapped = applyLineup(team, lineupChoice);
     const dhOptions = DH_FROM.filter((slot) => swapped[slot]);
@@ -399,7 +449,7 @@ export function createGameDay(container, code, onLeave) {
         : "You don't have a bench outfielder to DH."),
       dhRow,
       el("div", { className: "led small" }, "PITCHING STAFF"),
-      el("p", { className: "hint" }, staffPick == null ? "Tap a pitcher, then tap another to swap their roles."
+      el("p", { className: "hint" }, staffPick == null ? "Drag a pitcher by the ☰ to change his role — or tap one, then another, to swap them."
         : `Now tap the pitcher to trade roles with ${team[staffOrder[staffPick]]?.name ?? "him"} (or tap him again to cancel).`),
       el("div", { className: "lineup-card staff-card" }, ...staffRows),
       status, lockBtn, leaveBtn(), credit());
