@@ -548,3 +548,82 @@ body.drafting .draft:has(.handheld) .team .hint { color: #6f6157; }
 @media (max-width: 480px) {
   .code-lines li.ind { padding-left: calc(46px + 2.4ch); background-position: 52px 0; }
 }
+
+/* --- LINEUP CARD after the shuffle (update 13) --- */
+.lineup-card { display: grid; gap: 8px; margin: 12px 0; text-align: left; }
+.lineup-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: stretch; }
+.lineup-row .slot { color: #ff6b5e; align-self: center; font-weight: bold; }
+.chip.lineup-pick { min-height: 44px; border-radius: 10px; padding: 6px 8px; text-align: left; overflow-wrap: anywhere; line-height: 1.25; }
+.chip.lineup-pick small { display: block; font-size: 11px; opacity: .85; }
+.chip.lineup-pick.on { background: #2f6f2f; border-color: #7cfc7c; color: #fff; }
+.staff-row { grid-template-columns: 52px minmax(0, 1fr); }
+.staff-card { margin-top: 6px; }
+.stats-note { margin: 0 0 6px; font-size: 11px; letter-spacing: .14em; color: #ffb74d; text-align: left; }
+.middle.handheld .stats-note { color: #a6492a; }
+.dh-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dh-card .chip.lineup-pick small { display: block; }
+
+/* ===================== PHONE HANDHELD (update 14) =====================
+   Only when body.phone is set (phones under 600px wide, see phone.js). PC and iPad never get it.
+   One pane at a time; a handheld control pad is fixed to the bottom of the screen. */
+body.phone { align-items: stretch; background: linear-gradient(105deg, #e0d6be 0%, #fff7e1 15%, #f6e9d0 65%, #d0bfa3 100%); }
+body.phone #app { max-width: none; padding: 10px 10px calc(var(--pad-h, 190px) + 14px); }
+body.phone .draft { display: block; max-width: none; margin: 0; }
+body.phone .draft > [data-pane] { display: none; }
+body.phone .draft[data-pane="list"] > [data-pane="list"],
+body.phone .draft[data-pane="game"] > [data-pane="game"],
+body.phone .draft[data-pane="away"] > [data-pane="away"],
+body.phone .draft[data-pane="home"] > [data-pane="home"] { display: block; }
+/* the dark draft screen sits in a brown bezel, like the handheld's LCD */
+body.phone .draft > .screen.middle:not(.handheld) { border: 8px solid #805943; border-radius: 16px; padding: 16px 10px; box-shadow: inset 0 3px 8px #000a, 0 2px 0 #fff3da; }
+body.phone .draft > .team { border: 8px solid #805943; border-radius: 16px; }
+body.phone .middle .chip.auto { display: none; }
+body.phone .middle .filters { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding-bottom: 4px; scrollbar-width: none; }
+body.phone .middle .filters .chip { flex-shrink: 0; min-height: 40px; min-width: 44px; }
+body.phone .pool { max-height: none; overflow: visible; }
+.sort-select { margin: 0 0 8px; font-size: 14px; padding: 10px; color: #ffcf7a; }
+.pcards { display: grid; }
+.pcard { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 8px 8px; background: none; border: 0; border-bottom: 1px dashed #333; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pcard.sel { background: #2c3f33; box-shadow: inset 0 0 0 2px #7cfc7c; border-radius: 6px; }
+.pc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pc-name { font-size: 15px; font-weight: bold; color: #f0f4e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-info { font-size: 11px; color: #9a9580; }
+.pc-stats { font-size: 11px; color: #b3c4b7; }
+.pc-big { text-align: right; flex-shrink: 0; }
+.pc-big b { display: block; font-size: 18px; color: #7cfc7c; }
+.pc-big small { font-size: 9px; color: #9a9580; letter-spacing: .12em; }
+
+.phone-pad {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 80;
+  display: grid; gap: 10px; padding: 10px 12px calc(8px + env(safe-area-inset-bottom));
+  background: linear-gradient(105deg, #e0d6be 0%, #fff7e1 15%, #f6e9d0 65%, #d0bfa3 100%);
+  border-top: 2px solid #c9b8a1; border-radius: 22px 22px 0 0; box-shadow: 0 -6px 18px #0006;
+}
+.pad-selectors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.pad-select {
+  min-height: 50px; border-radius: 12px; border: 2px solid; cursor: pointer; padding: 4px 2px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font: 900 12px/1.1 Arial, Helvetica, sans-serif; letter-spacing: .12em; white-space: pre-line; text-align: center;
+  box-shadow: inset 0 2px 2px #ffffff66, 0 3px 0 var(--sh);
+}
+.pad-select:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--sh); }
+.look-free { background: linear-gradient(#43b25e, #2b8a45); border-color: #1f6b34; --sh: #175227; color: #fff; }
+.look-away { background: linear-gradient(#3a72c9, #2558a8); border-color: #1d4687; --sh: #163a72; color: #fff; }
+.look-home { background: linear-gradient(#ffffff, #eeeae2); border-color: #cfc6b8; --sh: #b3aa9c; color: #2b241e; }
+.look-plain { background: linear-gradient(#efe3c9, #d9c9ad); border-color: #c9b8a1; --sh: #a99b83; color: #4a3328; }
+.pad-led { width: 9px; height: 9px; border-radius: 50%; background: rgba(0, 0, 0, .35); }
+.pad-select.on .pad-led { background: #ff3b30; box-shadow: 0 0 6px #ff3b30; }
+.pad-actions { display: flex; gap: 12px; }
+.pad-actions:empty { display: none; }
+.pad-btn { min-height: 54px; border-radius: 999px; border: 2px solid #dfcdb6; color: #fff; cursor: pointer; font: 900 15px Arial, Helvetica, sans-serif; letter-spacing: .08em; }
+.pad-btn:active:not(:disabled) { transform: translateY(3px); }
+.pad-red { background: #c62828; font-size: 13px; letter-spacing: .04em; box-shadow: inset 0 3px 3px #ffffff55, inset 0 -3px 4px #4a0a0a80, 0 5px 0 #7a1414; }
+.pad-go { background: #e76033; font-size: 17px; letter-spacing: .12em; box-shadow: inset 0 3px 3px #ffffff55, inset 0 -3px 4px #832b0e80, 0 5px 0 #a23a19; }
+.pad-btn.waiting { background: #9a948b; color: #e4e0d8; cursor: default; box-shadow: inset 0 2px 3px #ffffff33, 0 5px 0 #6f6a63; }
+.pad-grille { width: 90px; height: 14px; margin: 0 auto; border-radius: 4px; opacity: .7; background: repeating-linear-gradient(to bottom, transparent 0 3px, #ac997b 3px 5px, #fff5df 5px 7px); }
+.pad-tray { background: #171e20; border: 3px solid #805943; border-radius: 12px; padding: 8px 10px; color: #e7ebdf; max-height: 30vh; overflow: auto; }
+.pad-tray[hidden] { display: none; }
+.tray-title { font-size: 11px; letter-spacing: .1em; color: #ffcf7a; margin-bottom: 6px; font-weight: bold; }
+.tray-slots { display: flex; flex-wrap: wrap; gap: 6px; }
+.tray-slots .chip.pick { min-height: 44px; padding: 0 14px; }
+.chip.pick.on { background: #7cfc7c; color: #0f2a0f; border-color: #7cfc7c; }

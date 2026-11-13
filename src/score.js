@@ -73,14 +73,56 @@ export function shuffleTeams(teams, keep, seed) {
   return { A, B, moved };
 }
 
+// LINEUP card: after the shuffle, a manager can start his backup instead of his starter at any position.
+// swaps = positions (e.g. ["LF", "C"]) where the backup starts. The starter moves to the bench spot, so if
+// both play that day the backup's line counts, and the benched starter becomes a Home Run Derby hitter.
+// If the man you start didn't play that day, the other one still fills in, same as always.
+export const DH_FROM = ["LF BN", "CF BN", "RF BN"]; // who can be the DH: the bench outfielders
+export function applyLineup(team, swaps = [], dh = null) {
+  const t = { ...team };
+  for (const pos of swaps || []) {
+    const bn = pos + " BN";
+    if (POSITIONS.includes(pos) && t[pos] && t[bn]) [t[pos], t[bn]] = [t[bn], t[pos]];
+  }
+  // DH: one of the bench outfield spots (after the swaps above), e.g. "CF BN".
+  delete t.DH;
+  if (DH_FROM.includes(dh) && t[dh]) t.DH = t[dh];
+  return t;
+}
+
+// LINEUP CARD, pitching staff: order = the drafted pitching slots listed in their new roles, e.g.
+// ["RP1", "SP", "RP2", "CL", "SPARE"] puts the pitcher drafted as RP1 in the SP role and vice versa.
+// Anything that isn't a full reshuffle of the 5 slots is ignored (staff stays as drafted).
+export function applyStaff(team, order) {
+  if (!Array.isArray(order) || order.length !== PITCH_SLOTS.length ||
+      [...order].sort().join() !== [...PITCH_SLOTS].sort().join()) return team;
+  const t = { ...team };
+  PITCH_SLOTS.forEach((role, i) => { t[role] = team[order[i]]; });
+  return t;
+}
+
 // One team's hitters: starter if he played, else the backup, else nobody (0 bases).
+// Plus a 9th spot, "DH": team.DH is the bench outfielder the manager named on his lineup card. He bats if he
+// played and wasn't needed at his own position (his starter played). Otherwise the starting pitcher bats —
+// but only if he really came to the plate that day (pitchers batted before the DH, and in the NL).
+// Nobody tells the players that last part; they find out when it happens.
 function lineup(team, day, share) {
-  return POSITIONS.map((pos) => {
+  const rows = POSITIONS.map((pos) => {
     const starter = team[pos], backup = team[pos + " BN"];
     const used = starter && day.b[starter.pid] ? starter : backup && day.b[backup.pid] ? backup : null;
     const line = used ? day.b[used.pid] : null;
     return { pos, starter, backup, used, line, bases: line ? hitterBases(line) * share : 0 };
   });
+  const dh = team.DH;
+  const home = dh ? rows.find((r) => r.backup && r.backup.pid === dh.pid) : null;
+  const dhFree = !!(dh && home && home.used === home.starter && day.b[dh.pid]);
+  const sp = team.SP;
+  const used = dhFree ? dh : sp && day.b[sp.pid] ? sp : null;
+  if (dhFree) home.dhUsed = true; // he batted as the DH, so he isn't a Home Run Derby hitter
+  const line = used ? day.b[used.pid] : null;
+  rows.push({ pos: "DH", starter: dh || null, backup: null, used, line, pitcherBat: !!used && used === sp,
+    bases: line ? hitterBases(line) * share : 0 });
+  return rows;
 }
 
 // One team's pitchers by role (5/2/1/1 innings). A pitcher with no game that week is replaced
@@ -114,7 +156,7 @@ function staff(team, pitching, date, maxOuts) {
 // Returns his homers over the derby week (game day ± DERBY_WINDOW_DAYS), or null if he isn't eligible
 // (his starter didn't play, or he had no games that week). `week` = the day files for that week.
 export function derbyHomers(h, week) {
-  if (!h.used || h.used !== h.starter || !h.backup) return null;
+  if (!h.used || h.used !== h.starter || !h.backup || h.dhUsed) return null;
   const games = week.map((d) => d?.b?.[h.backup.pid]).filter(Boolean);
   return games.length ? games.reduce((t, r) => t + (r[4] || 0), 0) : null;
 }

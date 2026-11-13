@@ -4,6 +4,7 @@
 import { myId, makePick, updateRoom } from "./firebase.js";
 import { POSITIONS, BENCH, PITCH_SLOTS, ALL_SLOTS, teamFromPicks } from "./score.js";
 import { studioFooter } from "./rules.js";
+import { isPhone, makePad, padButton } from "./phone.js";
 
 const OUTFIELD = ["LF", "CF", "RF"];
 const MIN_GAMES = 10; // games at a position (in the 1990s) to be allowed to play it
@@ -87,6 +88,9 @@ export function createDraft(container, code, onLeave) {
   let auto = false; // AUTO-DRAFT: picks the best player for your next open spot when it's your turn
   let sort = { key: "BASES", dir: -1 }; // clicked column in the stat table
   let poolLoading = false;
+  // Phones: one pane at a time + handheld buttons. Tap a player, tap a spot, press DRAFT.
+  const phone = isPhone();
+  let selPid = null, selSlot = null;
 
   // ----- build the layout once -----
   const mineBox = el("section", { className: "team" });
@@ -101,6 +105,13 @@ export function createDraft(container, code, onLeave) {
   const leaveBtn = el("button", { className: "btn secondary", onclick: onLeave }, "LEAVE");
   const autoBtn = el("button", { className: "chip auto" });
   autoBtn.onclick = () => { auto = !auto; render(); };
+  const sortSel = el("select", { className: "field sort-select", ariaLabel: "Sort players by" });
+  sortSel.onchange = () => {
+    const cols = filter === "P" ? PIT_COLS : HIT_COLS;
+    const c = cols.find((x) => x.key === sortSel.value);
+    if (c) sort = { key: c.key, dir: c.low ? 1 : -1 };
+    renderList();
+  };
 
   search.addEventListener("input", () => { query = search.value.trim().toLowerCase(); renderList(); });
   for (const f of FILTERS) {
@@ -116,21 +127,24 @@ export function createDraft(container, code, onLeave) {
   }
 
   document.body.classList.add("drafting");
-  container.replaceChildren(
-    el("div", { className: "draft" },
-      mineBox,
-      el("section", { className: "screen middle" },
-        el("h1", { className: "title small" }, "TIME MACHINE BASEBALL"),
-        el("p", { className: "roomcode" }, "ROOM " + code), decadeTag,
-        clock, status, autoBtn, msgBox, filterRow, search, list, leaveBtn,
-        el("p", { className: "credit" },
-          "The information used here was obtained free of charge from and is copyrighted by Retrosheet. " +
-          "Interested parties may contact Retrosheet at www.retrosheet.org."),
-        studioFooter(),
-      ),
-      theirsBox,
-    )
+  const middle = el("section", { className: "screen middle" },
+    el("h1", { className: "title small" }, "TIME MACHINE BASEBALL"),
+    el("p", { className: "roomcode" }, "ROOM " + code), decadeTag,
+    clock, status, autoBtn, msgBox, filterRow, phone ? sortSel : null, search, list, leaveBtn,
+    el("p", { className: "credit" },
+      "The information used here was obtained free of charge from and is copyrighted by Retrosheet. " +
+      "Interested parties may contact Retrosheet at www.retrosheet.org."),
+    studioFooter(),
   );
+  middle.dataset.pane = "list";
+  const grid = el("div", { className: "draft" }, mineBox, middle, theirsBox);
+  container.replaceChildren(grid);
+  // Phone: FREE AGENTS (the list) · AWAY · HOME screen buttons, AUTODRAFT + DRAFT below.
+  const pad = phone ? makePad(grid, [
+    { key: "list", label: "FREE\nAGENTS", look: "free" },
+    { key: "away", label: "AWAY", look: "away" },
+    { key: "home", label: "HOME", look: "home" },
+  ], "list") : null;
   renderFilters();
   function ensurePool() {
     if (pool.length || poolLoading || !room) return;
@@ -221,6 +235,8 @@ export function createDraft(container, code, onLeave) {
       return (va - vb) * sort.dir;
     });
 
+    if (phone) return renderCards(rows, cols, col, s, myTeam);
+
     const th = (c) => el("th", {
       className: "sortable" + (c.key === col.key ? " sorted" : ""),
       title: "Sort by " + c.key,
@@ -242,6 +258,7 @@ export function createDraft(container, code, onLeave) {
             : null));
     });
     list.replaceChildren(
+      el("p", { className: "stats-note" }, `STATS: ${decadeYears()} DECADE TOTALS`),
       el("table", { className: "stat-table" },
         el("thead", {}, el("tr", {}, el("th", {}, "PLAYER"), ...cols.map(th), el("th", {}, myTurn ? "DRAFT" : ""))),
         el("tbody", {}, ...body)),
@@ -249,12 +266,77 @@ export function createDraft(container, code, onLeave) {
                   : el("p", { className: "hint" }, pool.length ? "No players match." : "Loading players..."));
   }
 
+  // ----- phone: the free agents as tap-to-select cards -----
+  function renderCards(rows, cols, col, s, myTeam) {
+    // Sort menu: every stat the desktop table can sort by.
+    if (sortSel.dataset.for !== (filter === "P" ? "P" : "H")) {
+      sortSel.dataset.for = filter === "P" ? "P" : "H";
+      sortSel.replaceChildren(...cols.map((c) => el("option", { value: c.key }, "SORT: " + c.key)));
+    }
+    sortSel.value = col.key;
+    if (selPid && s.taken.has(selPid)) { selPid = null; selSlot = null; }
+    const statLine = (p) => filter === "P"
+      ? (p.pit ? `${p.pit.gs ?? 0} GS · ${p.pit.w ?? 0} W · ${p.pit.sv ?? 0} SV · ${f2(p.pit.era)} ERA · ${p.pit.k ?? 0} K` : `${p.g} G`)
+      : (p.hit ? `${f3(p.hit.avg)} · ${p.hit.hr} HR · ${p.hit.sb} SB · ${p.hit.bases} BASES` : `${p.g} G`);
+    const cards = rows.slice(0, SHOW_MAX).map((p) => {
+      const on = p.id === selPid;
+      return el("button", {
+        type: "button", className: "pcard" + (on ? " sel" : ""), ariaPressed: String(on),
+        onclick: () => {
+          selPid = on ? null : p.id; selSlot = null;
+          renderList(); renderPad(state());
+        },
+      },
+        el("span", { className: "pc-main" },
+          el("span", { className: "pc-name" }, p.name),
+          el("span", { className: "pc-info" }, `${p.y[0]}–${p.y[1]} · ${Object.keys(p.pos).slice(0, 3).join("/")}`),
+          el("span", { className: "pc-stats" }, statLine(p))),
+        el("span", { className: "pc-big" }, el("b", {}, col.fmt(col.get(p))), el("small", {}, col.key)));
+    });
+    list.replaceChildren(
+      el("p", { className: "stats-note" }, `STATS: ${decadeYears()} DECADE TOTALS`),
+      el("div", { className: "pcards" }, ...cards),
+      rows.length ? el("p", { className: "hint" }, rows.length > SHOW_MAX ? `Showing top ${SHOW_MAX} of ${rows.length} — search a name to find anyone.` : "")
+                  : el("p", { className: "hint" }, pool.length ? "No players match." : "Loading players..."));
+  }
+
+  // ----- phone: the tray (pick a spot) and the AUTODRAFT / DRAFT buttons -----
+  function renderPad(s) {
+    if (!pad) return;
+    if (s.done) { pad.setTray(); pad.setActions(); return; }
+    const myTurn = s.onClock === s.me && !busy;
+    const p = selPid ? pool.find((x) => x.id === selPid) : null;
+    const slots = p ? openSlots(p, s.teams[s.me] || {}) : [];
+    if (selSlot && !slots.includes(selSlot)) selSlot = null;
+    pad.setTray(p ? el("div", { className: "tray-box" },
+      el("div", { className: "tray-title" }, `${p.name.toUpperCase()} → PICK A SPOT`),
+      slots.length
+        ? el("div", { className: "tray-slots" }, ...slots.map((slot) => el("button", {
+            type: "button", className: "chip pick" + (slot === selSlot ? " on" : ""),
+            onclick: () => { selSlot = slot; renderPad(state()); },
+          }, slot.replace(" BN", " bench"))))
+        : el("div", { className: "hint" }, "No open spot for him on your team.")) : null);
+    pad.setActions(
+      padButton(auto ? "AUTODRAFT: ON" : "AUTODRAFT", "red", () => { auto = !auto; render(); }, { grow: 1 }),
+      padButton("DRAFT", "go", () => {
+        if (!(myTurn && p && selSlot)) return;
+        pick(p, selSlot);
+      }, { ready: !!(myTurn && p && selSlot), grow: 1.5 }));
+  }
+
+  // "1990s" → "1990–1999": the stats in the draft are totals for the whole decade, not the game-day season.
+  const decadeYears = () => { const y = parseInt(room?.decade || "1990s", 10); return `${y}–${y + 9}`; };
+
   function render() {
     if (!room) return;
     ensurePool();
     const s = state();
     renderTeam(mineBox, s.me, s);
     renderTeam(theirsBox, s.other, s);
+    // Phone panes: the player who started the game is HOME.
+    const iAmHome = s.me === s.uidBySeat[1];
+    mineBox.dataset.pane = iAmHome ? "home" : "away";
+    theirsBox.dataset.pane = iAmHome ? "away" : "home";
     if (s.done) {
       clock.textContent = "DRAFT DONE";
       status.textContent = "Game day is next.";
@@ -271,8 +353,9 @@ export function createDraft(container, code, onLeave) {
     // 1-player mode: the host's screen makes the computer's picks.
     if (!s.done && s.players[s.onClock]?.cpu && room.host === s.me && !busy && pool.length) setTimeout(cpuPick, 900);
     const showPool = !s.done;
-    for (const e of [filterRow, search, list]) e.style.display = showPool ? "" : "none";
+    for (const e of [filterRow, search, list, sortSel]) e.style.display = showPool ? "" : "none";
     renderList();
+    renderPad(s);
   }
 
   // How good is this player for this spot? (used by AUTO-DRAFT and the computer)
@@ -339,7 +422,7 @@ export function createDraft(container, code, onLeave) {
       await makePick(code, { n: s.n, pid: player.id, name: player.name, slot },
         next < TOTAL_PICKS ? s.uidBySeat[seatForPick(next)] : null, who);
       if (next >= TOTAL_PICKS) await updateRoom(code, { status: "drafted" });
-      if (!forWho) { search.value = ""; query = ""; }
+      if (!forWho) { search.value = ""; query = ""; selPid = null; selSlot = null; }
     } catch (e) {
       message = "Pick didn't go through: " + e.message;
     }
@@ -349,6 +432,6 @@ export function createDraft(container, code, onLeave) {
 
   return {
     update(r) { room = r; render(); },
-    destroy() { document.body.classList.remove("drafting"); },
+    destroy() { document.body.classList.remove("drafting"); pad?.destroy(); },
   };
 }

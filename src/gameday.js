@@ -1,9 +1,11 @@
-// After the draft: PLAY BALL (protect 4 bench players) → shuffle → random date in the decade →
-// play-by-play innings 1–6 (NEXT / SKIP) → 7th inning stretch → late innings → final.
+// After the draft: PLAY BALL (protect 4 bench players) → shuffle → LINEUP CARD (start a backup?) →
+// innings 1–5, the starters (SKIP → top of the 6th) → the 6th, relievers in → 7th inning stretch →
+// 7th & 8th relievers, 9th closers → final.  NEXT steps through; SKIP jumps to the next part.
 // Click any player in a box score to see his real game that day.
 import { myId, updateRoom } from "./firebase.js";
 import { studioFooter } from "./rules.js";
-import { playGame, shuffleTeams, teamFromPicks, derbyHomers, RULES, POSITIONS, BENCH } from "./score.js";
+import { isPhone, makePad } from "./phone.js";
+import { playGame, shuffleTeams, applyLineup, applyStaff, teamFromPicks, derbyHomers, RULES, POSITIONS, BENCH, PITCH_SLOTS, DH_FROM } from "./score.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const prettyDate = (d) => `${MONTHS[Math.floor(d / 100) % 100 - 1]} ${d % 100}, ${Math.floor(d / 10000)}`;
@@ -109,8 +111,13 @@ export function createGameDay(container, code, onLeave) {
   let rolling = false;
   let shownFor = null;     // gameDate already drawn
   let keepChoice = null;   // bench slots this player is protecting
-  let stage = "pbp1";      // pbp1 → stretch → pbp2 → final  (each player steps at his own pace)
+  let lineupChoice = null; // positions where this player starts his backup (lineup card)
+  let staffOrder = null;   // lineup card: drafted pitching slots in their new roles (SP, RP1, RP2, CL, SPARE)
+  let staffPick = null;    // the role tapped first when swapping two pitchers
+  let dhChoice = null;     // lineup card: the bench outfield spot ("LF BN"…) named DH, or "" for none
+  let stage = "pbp1";      // pbp1 (1–5) → pen6 (6th) → stretch → pbp2 (7–9) → final  (each player steps at his own pace)
   let step = 0;
+  const atFirstPitch = () => stage === "pbp1" && step === 0;
   let soundOn = false;
   let audioCtx = null;
   let clockTimer = null;
@@ -140,6 +147,12 @@ export function createGameDay(container, code, onLeave) {
   function homerSound() {
     [520, 660, 780, 1040].forEach((f, i) => setTimeout(() => beep(f, 0.09), i * 90));
   }
+  // "Charge!" fanfare in the game's square-wave beeps: da-da-da-DAAA, da-DAAAAA!
+  function chargeFanfare() {
+    const notes = [[392, 0, 0.12], [523, 150, 0.12], [659, 300, 0.12], [784, 450, 0.32], [659, 800, 0.14], [784, 950, 0.6]];
+    notes.forEach(([f, at, len]) => setTimeout(() => beep(f, len), at));
+  }
+  let chargedStart = false; // the game-starting Charge plays once per game
   function drumroll() {
     for (let i = 0; i < 14; i++) setTimeout(() => beep(150 + (i % 2) * 20, 0.03), i * 55);
     setTimeout(() => beep(880, 0.25), 14 * 55 + 80);
@@ -170,7 +183,11 @@ export function createGameDay(container, code, onLeave) {
     return el("button", { className: "handheld-button blue sound-button", type: "button",
       title: soundOn ? "Sound on" : "Sound off",
       ariaLabel: soundOn ? "Mute sound" : "Turn sound on",
-      ariaPressed: String(soundOn), onclick: () => { soundOn = !soundOn; beep(580); drawSoundLabels(); } },
+      ariaPressed: String(soundOn), onclick: () => {
+        soundOn = !soundOn;
+        if (soundOn && atFirstPitch() && !chargedStart) { chargedStart = true; chargeFanfare(); } else beep(580);
+        drawSoundLabels();
+      } },
       speakerIcon());
   }
 
@@ -178,7 +195,16 @@ export function createGameDay(container, code, onLeave) {
   const right = el("section", { className: "team" });
   const middle = el("section", { className: "screen middle" });
   document.body.classList.add("drafting");
-  container.replaceChildren(el("div", { className: "draft" }, left, middle, right));
+  const grid = el("div", { className: "draft" }, left, middle, right);
+  middle.dataset.pane = "game";
+  container.replaceChildren(grid);
+  // Phone: GAME · AWAY · HOME screen buttons (NEXT / SKIP / SOUND stay on the handheld itself).
+  const pad = isPhone() ? makePad(grid, [
+    { key: "game", label: "GAME", look: "plain" },
+    { key: "away", label: "AWAY", look: "away" },
+    { key: "home", label: "HOME", look: "home" },
+  ], "game") : null;
+  if (pad) pad.sound = () => soundOn;
 
   const header = () => el("div", {},
     el("h1", { className: "title small" }, "TIME MACHINE BASEBALL"),
@@ -211,6 +237,7 @@ export function createGameDay(container, code, onLeave) {
       ...(note ? [el("p", { className: "hint" }, note)] : []),
       el("ul", { className: "slots" },
         el("li", { className: "group" }, "LINEUP"), ...POSITIONS.map(row),
+        ...(team.DH ? [el("li", { className: "filled" }, el("span", { className: "slot" }, "DH"), el("span", { className: "who" }, team.DH.name))] : []),
         el("li", { className: "group" }, "BENCH"), ...BENCH.map(row),
         el("li", { className: "group" }, "PITCHERS"), ...["SP", "RP1", "RP2", "CL", "SPARE"].map(row)));
   }
@@ -263,10 +290,129 @@ export function createGameDay(container, code, onLeave) {
       status, playBtn, leaveBtn(), credit());
   }
 
+  // Saved as "LF,C" (Firebase drops empty arrays, so a string is safer).
+  const swapsOf = (lu) => String(lu?.swaps || "").split(",").filter((p) => POSITIONS.includes(p));
+  const staffOf = (lu) => String(lu?.staff || "").split(",").filter(Boolean);
+  // A team after its manager's lineup card: hitters swapped, then pitchers in their chosen roles.
+  const carded = (team, swaps, staff, dh) => applyStaff(applyLineup(team, swaps, dh), staff);
+  const dhOf = (lu) => (DH_FROM.includes(lu?.dh) ? lu.dh : null);
+
+  // The post-shuffle teams (same result on both screens: the coin flips are seeded by room + date).
+  function shuffleFor(s) {
+    const [uA, uB] = s.uids;                  // A = home (started the game), B = visitors
+    const shuffled = shuffleTeams({ A: s.drafted[uA], B: s.drafted[uB] },
+      { A: s.ready[uA].keep, B: s.ready[uB].keep }, code + "|" + room.gameDate);
+    return { uA, uB, shuffled };
+  }
+
+  // ---------- LINEUP CARD: after the shuffle, start your backup instead of your starter? ----------
+  // No stats from game day are shown here: they're revealed once the game starts.
+  function lineupScreen(s, lineups) {
+    const { uA, shuffled } = shuffleFor(s);
+    const key = s.me === uA ? "A" : "B";
+    const team = shuffled[key];
+    const oppName = room.players[s.other]?.name ?? "Opponent";
+    const myName = room.players[s.me]?.name ?? "You";
+    const kept = s.ready[s.me]?.keep || [];
+    const tag = (slot, pick) => !pick ? null
+      : shuffled.moved.has(pick.pid) ? el("small", { className: "moved" }, ` ↔ from ${oppName}`)
+      : kept.includes(slot) ? el("small", {}, " 🔒") : null;
+
+    // Their panel shows their post-shuffle roster, not their lineup choices (those stay secret too).
+    rosterPanel(right, oppName, shuffled[key === "A" ? "B" : "A"], null,
+      lineups[s.other]?.done ? "Lineup set ✔" : "Filling out the lineup card...");
+
+    if (lineups[s.me]?.done) {
+      rosterPanel(left, myName + " (you)", carded(team, swapsOf(lineups[s.me]), staffOf(lineups[s.me]), dhOf(lineups[s.me])), null, "Lineup set ✔");
+      middle.replaceChildren(header(), el("div", { className: "led small" }, "LINEUP SET"),
+        el("p", { className: "hint" }, `Waiting for ${oppName} to hand in the lineup card...`), leaveBtn(), credit());
+      return;
+    }
+
+    lineupChoice ??= [];
+    const both = POSITIONS.filter((pos) => team[pos] && team[pos + " BN"]);
+    const rows = both.map((pos) => {
+      const starts = lineupChoice.includes(pos) ? "BN" : "ST";
+      const choice = (which) => {
+        const pick = which === "BN" ? team[pos + " BN"] : team[pos];
+        const slot = which === "BN" ? pos + " BN" : pos;
+        return el("button", {
+          type: "button", className: "chip lineup-pick" + (starts === which ? " on" : ""),
+          ariaPressed: String(starts === which),
+          onclick: () => {
+            lineupChoice = which === "BN" ? [...new Set([...lineupChoice, pos])] : lineupChoice.filter((x) => x !== pos);
+            lineupScreen(info(), room.lineup || {});
+          },
+        }, pick.name, tag(slot, pick));
+      };
+      return el("div", { className: "lineup-row" },
+        el("span", { className: "slot" }, pos), choice("ST"), choice("BN"));
+    });
+    // Pitching staff: tap one pitcher, then another, to swap their roles. Names only — no stats.
+    staffOrder ??= [...PITCH_SLOTS];
+    const ROLE_NOTE = { SP: "starts · innings 1–5", RP1: "6th–7th", RP2: "8th", CL: "closes · 9th", SPARE: "fills in if one didn't pitch" };
+    const staffRows = PITCH_SLOTS.map((role, i) => {
+      const pick = team[staffOrder[i]];
+      return el("div", { className: "lineup-row staff-row" },
+        el("span", { className: "slot" }, role),
+        el("button", {
+          type: "button", className: "chip lineup-pick" + (staffPick === i ? " on" : ""), disabled: !pick,
+          ariaPressed: String(staffPick === i),
+          onclick: () => {
+            if (staffPick == null) staffPick = i;
+            else { if (staffPick !== i) [staffOrder[staffPick], staffOrder[i]] = [staffOrder[i], staffOrder[staffPick]]; staffPick = null; }
+            lineupScreen(info(), room.lineup || {});
+          },
+        }, pick?.name ?? "—", el("small", {}, ROLE_NOTE[role])));
+    });
+    // Designated hitter: one of the bench outfielders (after the starter/backup swaps above), names only.
+    const swapped = applyLineup(team, lineupChoice);
+    const dhOptions = DH_FROM.filter((slot) => swapped[slot]);
+    if (dhChoice == null || (dhChoice && !dhOptions.includes(dhChoice))) dhChoice = dhOptions[0] ?? "";
+    const dhChip = (slot, label) => el("button", {
+      type: "button", className: "chip lineup-pick" + (dhChoice === slot ? " on" : ""), ariaPressed: String(dhChoice === slot),
+      onclick: () => { dhChoice = slot; lineupScreen(info(), room.lineup || {}); },
+    }, label);
+    const dhRow = el("div", { className: "lineup-card dh-card" },
+      ...dhOptions.map((slot) => dhChip(slot, el("span", {}, swapped[slot].name, el("small", {}, slot.replace(" BN", " bench"))))),
+      dhChip("", el("span", {}, "No DH")));
+    const lockBtn = el("button", { className: "btn" }, "LOCK IN LINEUP");
+    const status = el("p", { className: "hint" });
+    lockBtn.onclick = async () => {
+      lockBtn.disabled = true;
+      try { await updateRoom(code, { [`lineup/${s.me}`]: { done: true, swaps: lineupChoice.join(","), staff: staffOrder.join(","), dh: dhChoice || "" } }); }
+      catch (e) { status.textContent = "Couldn't save: " + e.message; lockBtn.disabled = false; }
+    };
+
+    rosterPanel(left, myName + " (you)", carded(team, lineupChoice, staffOrder, dhChoice), null, "After the shuffle");
+    middle.replaceChildren(header(),
+      el("div", { className: "led small" }, "LINEUP CARD"),
+      el("p", { className: "hint" },
+        "Tap who starts at each spot. If both men played that day, the one you start is the one who counts — " +
+        "and the one on the bench swings in the Home Run Derby if the game ends tied. " +
+        "If the man you start didn't play, the other one fills in. Game day stats stay secret until the first pitch."),
+      both.length ? el("div", { className: "lineup-card" }, ...rows)
+        : el("p", { className: "hint" }, "You don't have a starter and a backup at any position — nothing to change."),
+      el("div", { className: "led small" }, "DESIGNATED HITTER"),
+      el("p", { className: "hint" }, dhOptions.length
+        ? "Pick a bench outfielder to bat as your DH. He bats if his starter plays that day — but then he can't swing in the Home Run Derby."
+        : "You don't have a bench outfielder to DH."),
+      dhRow,
+      el("div", { className: "led small" }, "PITCHING STAFF"),
+      el("p", { className: "hint" }, staffPick == null ? "Tap a pitcher, then tap another to swap their roles."
+        : `Now tap the pitcher to trade roles with ${team[staffOrder[staffPick]]?.name ?? "him"} (or tap him again to cancel).`),
+      el("div", { className: "lineup-card staff-card" }, ...staffRows),
+      status, lockBtn, leaveBtn(), credit());
+  }
+
   // ---------- room updates ----------
   async function update(r) {
     room = r;
     const s = info();
+    // Phone panes: the player who started the game (seat 1) is HOME; left = me, right = them.
+    const iAmHome = s.me === s.uids[0];
+    left.dataset.pane = iAmHome ? "home" : "away";
+    right.dataset.pane = iAmHome ? "away" : "home";
     // 1-player mode: the computer protects the first 4 bench players it drafted, and is ready at once.
     const cpu = s.uids.find((u) => room.players[u].cpu);
     if (cpu && !s.ready[cpu] && r.host === s.me) {
@@ -286,6 +432,17 @@ export function createGameDay(container, code, onLeave) {
         rolling = false;
       }
       return;
+    }
+    // LINEUP CARD: both managers hand one in before the first pitch. The computer sticks with its starters.
+    const lineups = r.lineup || {};
+    if (cpu && !lineups[cpu] && r.host === s.me) {
+      const { uA, shuffled } = shuffleFor(s);
+      const cpuTeam = shuffled[cpu === uA ? "A" : "B"];
+      updateRoom(code, { [`lineup/${cpu}`]: { done: true, swaps: "", dh: DH_FROM.find((slot) => cpuTeam[slot]) || "" } }).catch(() => {});
+    }
+    if (!s.uids.every((u) => lineups[u]?.done)) {
+      shownFor = null; cancelClock(); middle.classList.remove("handheld", "time-travel");
+      return lineupScreen(s, lineups);
     }
     if (shownFor === r.gameDate) return;
     shownFor = r.gameDate;
@@ -329,9 +486,11 @@ export function createGameDay(container, code, onLeave) {
     const [uA, uB] = s.uids;                  // A = home (started the game), B = visitors
     const date = room.gameDate;
     const seed = code + "|" + date;
-    const shuffled = shuffleTeams({ A: s.drafted[uA], B: s.drafted[uB] },
-      { A: s.ready[uA].keep, B: s.ready[uB].keep }, seed);
-    const teams = { A: shuffled.A, B: shuffled.B };
+    const { shuffled } = shuffleFor(s);
+    // Lineup cards: where a manager started his backup, the two trade places (starter → bench spot).
+    const swaps = { A: swapsOf(room.lineup?.[uA]), B: swapsOf(room.lineup?.[uB]) };
+    const teams = { A: carded(shuffled.A, swaps.A, staffOf(room.lineup?.[uA]), dhOf(room.lineup?.[uA])),
+      B: carded(shuffled.B, swaps.B, staffOf(room.lineup?.[uB]), dhOf(room.lineup?.[uB])) };
     const name = { A: room.players[uA].name, B: room.players[uB].name };
     const mine = s.me === uB ? "B" : "A";
     const theirs = mine === "A" ? "B" : "A";
@@ -350,10 +509,11 @@ export function createGameDay(container, code, onLeave) {
       const rows = BENCH.map((slot) => {
         const pick = teams[key][slot];
         const original = pick ? originalOwner.get(String(pick.pid)) : null;
-        const protectedPick = !!pick && original === key && s.ready[s.uids[key === "A" ? 0 : 1]]?.keep?.includes(slot);
+        const benchedByManager = swaps[key].includes(slot.replace(" BN", "")); // the starter he sat on the lineup card
+        const protectedPick = !benchedByManager && !!pick && original === key && s.ready[s.uids[key === "A" ? 0 : 1]]?.keep?.includes(slot);
         const moved = !!pick && original && original !== key;
         const record = pick && day.b?.[pick.pid];
-        const desc = protectedPick ? "PROTECTED" : moved ? `TRADED FROM ${name[original].toUpperCase()}` : "REMAINED";
+        const desc = benchedByManager ? "SAT BY MANAGER" : protectedPick ? "PROTECTED" : moved ? `TRADED FROM ${name[original].toUpperCase()}` : "REMAINED";
         const detail = record ? hitLine(record) : "Did not play on game day";
         const showStats = () => {
           if (!pick) return;
@@ -388,32 +548,63 @@ export function createGameDay(container, code, onLeave) {
     const mid = playGame(teams, day, pitching, date, seed, 6, week);
     const full = playGame(teams, day, pitching, date, seed, 9, week);
     const pitchNet = (side) => side.parts.allowed - side.parts.ks - side.parts.cs;
-    const names = (list) => list.filter((p) => p.p && p.outs).map((p) => p.p.name.split(" ").pop()).join(", ") || "nobody";
 
-    // Build the play-by-play steps. Visitors bat first, like a real game.
-    const part1 = [], part2 = [];
+    // Build the play-by-play, following the pitching changes:
+    //   part1 = innings 1–5 (the starters) → part6 = the 6th (relievers in) → 7th inning stretch →
+    //   part2 = 7th, 8th, 9th (reliever, reliever, closer).  SKIP jumps to the start of the next part.
+    // Visitors bat first, like a real game.
+    const thru5 = playGame(teams, day, pitching, date, seed, 5, week);
+    const byInning = { 5: thru5, 6: mid, 7: playGame(teams, day, pitching, date, seed, 7, week),
+      8: playGame(teams, day, pitching, date, seed, 8, week), 9: full };
+    const ORD = { 6: "6TH", 7: "7TH", 8: "8TH", 9: "9TH" };
+    const PEN = { 6: 1, 7: 1, 8: 2, 9: 3 }; // which pitcher covers that inning: RP1, RP1, RP2, CL
+
+    const part1 = [], part6 = [], part2 = [];
     for (const k of ["B", "A"]) {
-      mid[k].hitters.forEach((h, i) => part1.push({
+      thru5[k].hitters.forEach((h, i) => part1.push({
         team: k, delta: h.bases, hitter: i,
-        text: `${h.pos} ${(h.used?.name ?? h.starter?.name ?? "—").toUpperCase()} · ${h.line ? hitLine(h.line).toUpperCase() : "DID NOT PLAY"} · +${Math.round(h.bases)}`,
+        text: `${h.pitcherBat ? "P" : h.pos} ${(h.used?.name ?? h.starter?.name ?? "—").toUpperCase()} · ${h.line ? hitLine(h.line).toUpperCase() : "DID NOT PLAY"} · +${Math.round(h.bases)}`,
       }));
-      const o = mid[opp(k)];
+      const sp = thru5[opp(k)].pitchers[0];
       part1.push({
-        team: k, delta: pitchNet(mid[k]), pitch: true,
-        text: `${name[opp(k)].toUpperCase()}'S ARMS (${names(o.pitchers).toUpperCase()}) THROUGH 6: ` +
-          `GAVE UP +${Math.round(mid[k].parts.allowed)}, STRUCK OUT ${Math.round(mid[k].parts.ks)}`,
+        team: k, delta: pitchNet(thru5[k]), pitch: true,
+        text: sp.row
+          ? `${name[opp(k)].toUpperCase()}'S STARTER ${sp.p.name.toUpperCase()} THROUGH 5: GAVE UP +${Math.round(thru5[k].parts.allowed)}, STRUCK OUT ${Math.round(thru5[k].parts.ks)}`
+          : `${name[opp(k)].toUpperCase()} HAD NO STARTER THAT WEEK — 5 EMPTY INNINGS`,
       });
     }
-    for (const k of ["B", "A"]) {
-      const late = full[k].parts.hit - mid[k].parts.hit;
-      const best = full[k].hitters.filter((h) => h.line).sort((a, b) => b.bases - a.bases)[0];
-      part2.push({ team: k, delta: late,
-        text: `${name[k].toUpperCase()} LATE-INNING BATS: +${Math.round(late)}` + (best ? ` · ${best.used.name.toUpperCase()} STAYS HOT` : "") });
-      const lateArms = full[opp(k)].pitchers.filter((p) => p.role.slot !== "SP");
-      part2.push({ team: k, delta: pitchNet(full[k]) - pitchNet(mid[k]), pitch: true,
-        text: `${name[opp(k)].toUpperCase()}'S BULLPEN (${names(lateArms).toUpperCase()}): ` +
-          `GAVE UP +${Math.round(full[k].parts.allowed - mid[k].parts.allowed)}, STRUCK OUT ${Math.round(full[k].parts.ks - mid[k].parts.ks)}` });
+    // Announces the pitcher by full name: RP1 comes in for the 6th and stays for the 7th, RP2 the 8th, the closer the 9th.
+    // (The SPARE takes a role whose pitcher didn't pitch that week.)
+    function comingIn(k, inn) {
+      const p = full[k].pitchers[PEN[inn]];
+      const team = name[k].toUpperCase();
+      if (!p.row) return `NOBODY IS AVAILABLE TO PITCH THE ${ORD[inn]} FOR ${team} — AN EMPTY INNING.`;
+      const who = p.p.name.toUpperCase();
+      if (inn === 7) return `${who} STAYS IN TO PITCH THE 7TH FOR ${team}.`;
+      if (p.sub) return `${who}, THE SPARE, IS COMING IN TO PITCH THE ${ORD[inn]} FOR ${team}.`;
+      return `${inn === 9 ? "CLOSER " : ""}${who} IS COMING IN TO PITCH THE ${ORD[inn]} FOR ${team}.`;
     }
+    // One step per half-inning in the bullpen innings: that team's bats + what the pitcher on the mound gave up.
+    for (const inn of [6, 7, 8, 9]) {
+      for (const k of ["B", "A"]) {
+        const prev = byInning[inn - 1][k], cur = byInning[inn][k];
+        const bats = cur.parts.hit - prev.parts.hit;
+        const arms = pitchNet(cur) - pitchNet(prev);
+        (inn === 6 ? part6 : part2).push({ team: k, delta: bats + arms, pitch: true,
+          text: `${k === "B" ? "TOP" : "BOTTOM"} ${ORD[inn]} · ${comingIn(opp(k), inn)} ` +
+            `${name[k].toUpperCase()} BATS +${Math.round(bats)} · HE GAVE UP +${Math.round(cur.parts.allowed - prev.parts.allowed)}, ${Math.round(cur.parts.ks - prev.parts.ks)} K` });
+      }
+    }
+    const SECTIONS = {
+      pbp1: { steps: part1, before: [], official: thru5, panel: thru5, late: false,
+        caption: "INNINGS 1–5 · THE STARTERS", start: `PLAY BALL! ${name.B.toUpperCase()} BATS FIRST.` },
+      pen6: { steps: part6, before: [part1], official: mid, panel: mid, late: "HITTERS (through 6)",
+        caption: "6TH INNING · HERE COME THE RELIEVERS", start: "TOP OF THE 6TH — THE STARTERS ARE DONE. HERE COME THE BULLPENS!" },
+      pbp2: { steps: part2, before: [part1, part6], official: full, panel: full, late: true,
+        caption: "INNINGS 7–9 · RELIEVERS, THEN THE CLOSERS", start: "LATE INNINGS — THE 7TH, 8TH AND 9TH." },
+    };
+    const NEXT_STAGE = { pbp1: "pen6", pen6: "stretch", pbp2: () => (tieSteps.length ? "tiebreak" : "final") };
+    const nextStage = (st) => (typeof NEXT_STAGE[st] === "function" ? NEXT_STAGE[st]() : NEXT_STAGE[st]);
 
     const scoreFrom = (cum) => {
       const out = {};
@@ -434,35 +625,36 @@ export function createGameDay(container, code, onLeave) {
       const tally = { A: 0, B: 0 };
       const push = (text, caption, active = "B", fx = {}) =>
         tieSteps.push({ text, caption, active, fx, tally: { A: { runs: tally.A, stranded: 0 }, B: { runs: tally.B, stranded: 0 } } });
-      push(`TIED ${full.A.runs}–${full.B.runs} AFTER 9! IT'S A HOME RUN DERBY!`, "TIEBREAKER · ROUND 1: BENCH SLUGGERS WHO SAT");
+      push(`TIED ${full.A.runs}–${full.B.runs} AFTER 9! WE'RE GOING TO EXTRA INNINGS!`, "END OF 9 · EXTRA INNINGS");
+      push("TOP OF THE 10TH: IT'S A HOME RUN DERBY! BENCH SLUGGERS WHO SAT, STEP UP.", "10TH INNING · HOME RUN DERBY · ROUND 1: BENCH SLUGGERS WHO SAT", "B", { charge: true });
       // Round 1: bench players who sat because their starter played — their real homers that week.
       for (const k of ["B", "A"]) {
         const sat = full[k].hitters.map((h) => [h, derbyHomers(h, week?.length ? week : [day])]).filter(([, hr]) => hr != null);
-        if (!sat.length) push(`${UP(k)}'S BENCH: NOBODY ELIGIBLE — 0 HOMERS`, "ROUND 1: BENCH SLUGGERS", k);
+        if (!sat.length) push(`${UP(k)}'S BENCH: NOBODY ELIGIBLE — 0 HOMERS`, "10TH INNING · ROUND 1: BENCH SLUGGERS", k);
         for (const [h, hr] of sat) {
           tally[k] += hr;
           push(`${UP(k)} · ${h.pos} ${h.backup.name.toUpperCase()} · ${hr ? hr + (hr > 1 ? " HOMERS" : " HOMER") + " THIS WEEK!" : "NO HOMERS THIS WEEK"}`,
-            "ROUND 1: BENCH SLUGGERS · SCOREBOARD = DERBY HOMERS", k, { homer: hr > 0 });
+            "10TH INNING · ROUND 1: BENCH SLUGGERS · SCOREBOARD = DERBY HOMERS", k, { homer: hr > 0 });
         }
       }
       tally.A = full.A.derby; tally.B = full.B.derby; // the official count
       if (full.decidedBy === "derby") {
-        push(`${UP(winner)} WINS THE HOME RUN DERBY, ${full[winner].derby}–${full[loser].derby}!`, "TIEBREAKER DECIDED", winner);
+        push(`${UP(winner)} WINS IT IN THE 10TH! HOME RUN DERBY, ${full[winner].derby}–${full[loser].derby}!`, "FINAL/10", winner);
       } else {
-        push(`DERBY TIED ${full.A.derby}–${full.B.derby}! ROUND 2: STARTERS' HOMERS`, "TIEBREAKER · ROUND 2: STARTERS' HOMERS");
+        push(`DERBY TIED ${full.A.derby}–${full.B.derby}! ROUND 2: STARTERS' HOMERS`, "10TH INNING · ROUND 2: STARTERS' HOMERS");
         // Round 2: homers by each lineup that day.
         for (const k of ["B", "A"]) {
           const hitters = full[k].hitters.filter((h) => h.line && h.line[4]);
           tally[k] = full[k].starterHR;
           push(`${UP(k)}'S LINEUP: ${full[k].starterHR} HOMER${full[k].starterHR === 1 ? "" : "S"}` +
             (hitters.length ? ` (${hitters.map((h) => h.used.name.split(" ").pop().toUpperCase()).join(", ")})` : ""),
-            "ROUND 2: STARTERS' HOMERS · SCOREBOARD = HOMERS", k);
+            "10TH INNING · ROUND 2: STARTERS' HOMERS · SCOREBOARD = HOMERS", k);
         }
         if (full.decidedBy === "starterHR") {
-          push(`${UP(winner)} WINS ON STARTERS' HOMERS, ${full[winner].starterHR}–${full[loser].starterHR}!`, "TIEBREAKER DECIDED", winner);
+          push(`${UP(winner)} WINS IT IN THE 10TH ON STARTERS' HOMERS, ${full[winner].starterHR}–${full[loser].starterHR}!`, "FINAL/10", winner);
         } else {
-          push("STILL TIED! FLIPPING A COIN...", "TIEBREAKER · ROUND 3: COIN FLIP", "B", { coin: true });
-          push(`THE COIN LANDS FOR ${UP(winner)}!`, "TIEBREAKER DECIDED", winner);
+          push("STILL TIED! FLIPPING A COIN...", "10TH INNING · ROUND 3: COIN FLIP", "B", { coin: true });
+          push(`THE COIN LANDS FOR ${UP(winner)}! THEY WIN IT IN THE 10TH!`, "FINAL/10", winner);
         }
       }
     }
@@ -472,6 +664,7 @@ export function createGameDay(container, code, onLeave) {
         const st = tieSteps[Math.min(step, tieSteps.length - 1)];
         if (st.fx.homer) homerSound();
         if (st.fx.coin) drumroll();
+        if (st.fx.charge) chargeFanfare();
         middle.replaceChildren(...handheldView(st.tally, name, st.text,
           `${st.caption} · ${Math.min(step, tieSteps.length - 1) + 1} OF ${tieSteps.length}`,
           [el("button", { className: "handheld-button blue", onclick: () => { beep(340); step = tieSteps.length - 1; draw(); } }, "SKIP"),
@@ -480,25 +673,31 @@ export function createGameDay(container, code, onLeave) {
              if (step >= tieSteps.length) { stage = "final"; step = 0; }
              draw();
            } }, step >= tieSteps.length - 1 ? "FINAL ▸" : "NEXT ▸")],
-          st.active, { banner: "HOME RUN DERBY", ...st.fx }));
+          st.active, { banner: "EXTRA INNINGS · 10TH", ...st.fx }));
         livePanel(left, mine, full, part2, part2.length, true);
         livePanel(right, theirs, full, part2, part2.length, true);
-      } else if (stage === "pbp1" || stage === "pbp2") {
-        const steps = stage === "pbp1" ? part1 : part2;
-        const base = stage === "pbp1" ? { A: 0, B: 0 } : sumSteps(part1, part1.length);
+      } else if (SECTIONS[stage]) {
+        const sec = SECTIONS[stage];
+        const steps = sec.steps;
+        const base = { A: 0, B: 0 };
+        for (const list of sec.before) { const c = sumSteps(list, list.length); base.A += c.A; base.B += c.B; }
         const cum = sumSteps(steps, step);
-        // Last step of each half shows the official score (avoids rounding drift).
-        const official = stage === "pbp1" ? mid : full;
-        const shown = step >= steps.length ? { A: official.A, B: official.B } : scoreFrom({ A: base.A + cum.A, B: base.B + cum.B });
+        // Last step of each part shows the official score (avoids rounding drift).
+        const shown = step >= steps.length ? { A: sec.official.A, B: sec.official.B } : scoreFrom({ A: base.A + cum.A, B: base.B + cum.B });
         const last = steps[step - 1];
         middle.replaceChildren(...handheldView(shown, name,
-          last ? last.text : stage === "pbp1" ? `PLAY BALL! ${name.B.toUpperCase()} BATS FIRST.` : "LATE INNINGS — HERE COME THE BULLPENS",
-          `DRAFTED FROM THE ${room.decade} · ${stage === "pbp1" ? "INNINGS 1–6" : "INNINGS 7–9"} · ${step} OF ${steps.length}`,
-          [el("button", { className: "handheld-button blue", onclick: () => { beep(340); step = steps.length; advance(); } }, "SKIP"),
-           el("button", { className: "handheld-button orange next-button", onclick: () => { beep(580); step++; advance(); } }, "NEXT ▸")],
+          last ? last.text : sec.start,
+          `DRAFTED FROM THE ${room.decade} · ${sec.caption} · ${step} OF ${steps.length}`,
+          // SKIP: straight to the start of the next part (from innings 1–5 that's the top of the 6th).
+          [el("button", { className: "handheld-button blue", onclick: () => { beep(340); enterStage(nextStage(stage)); } }, "SKIP"),
+           el("button", { className: "handheld-button orange next-button", onclick: () => {
+             // First pitch of the game: the Charge fanfare instead of the usual beep.
+             if (atFirstPitch() && !chargedStart) { chargedStart = true; chargeFanfare(); } else beep(580);
+             step++; advance();
+           } }, "NEXT ▸")],
           last?.team ?? "B"));
-        livePanel(left, mine, stage === "pbp1" ? mid : full, steps, step, stage === "pbp2");
-        livePanel(right, theirs, stage === "pbp1" ? mid : full, steps, step, stage === "pbp2");
+        livePanel(left, mine, sec.panel, steps, step, sec.late);
+        livePanel(right, theirs, sec.panel, steps, step, sec.late);
       } else if (stage === "stretch") {
         stretch(mid, name, () => { stage = "pbp2"; step = 0; draw(); });
         box(left, name[mine], mid[mine], false, (p) => fromOther(mine, p), true);
@@ -513,23 +712,26 @@ export function createGameDay(container, code, onLeave) {
         addBenchButton(right, theirs);
       }
     };
+    // Moving into a new part of the game. The top of the 6th (bullpens in) gets the Charge fanfare
+    // some of the time — a coin flip, so it's a surprise.
+    const enterStage = (next) => {
+      stage = next; step = 0;
+      if (next === "pen6" && Math.random() < 0.5) setTimeout(chargeFanfare, 120);
+      draw();
+    };
     const advance = () => {
-      const steps = stage === "pbp1" ? part1 : part2;
-      if (step > steps.length) {
-        stage = stage === "pbp1" ? "stretch" : tieSteps.length ? "tiebreak" : "final";
-        step = 0;
-      }
+      if (SECTIONS[stage] && step > SECTIONS[stage].steps.length) return enterStage(nextStage(stage));
       draw();
     };
 
     // Side panel while stepping: hitters light up as their turn is revealed.
     function livePanel(target, key, res, steps, upto, late) {
       const seen = new Set(steps.slice(0, upto).filter((st) => st.team === key && st.hitter != null).map((st) => st.hitter));
-      const rows = [el("li", { className: "group" }, late ? "HITTERS (full game)" : "HITTERS")];
+      const rows = [el("li", { className: "group" }, typeof late === "string" ? late : late ? "HITTERS (full game)" : "HITTERS")];
       res[key].hitters.forEach((h, i) => {
         const open = late || seen.has(i);
         rows.push(el("li", { className: open ? "filled" : "" },
-          el("span", { className: "slot" }, h.pos),
+          el("span", { className: "slot" }, h.pitcherBat ? "P" : h.pos),
           el("span", { className: "who" }, h.used?.name ?? h.starter?.name ?? "—",
             open ? el("small", { className: "line" }, hitLine(h.line)) : null),
           el("span", { className: "pts" }, open ? "+" + Math.round(h.bases) : "")));
@@ -567,7 +769,7 @@ export function createGameDay(container, code, onLeave) {
           ${fx.coin ? '<g class="flip-coin"><circle cx="180" cy="150" r="30" fill="#e8b84a" stroke="#9c6b1e" stroke-width="4"/><text x="180" y="160" text-anchor="middle" font-size="26" font-weight="900" fill="#8a5a14" font-family="Arial">TMB</text></g>' : ""}
           </svg>` }),
         el("div", { className: "field-legend" + (fx.homer ? " legend-homer" : "") },
-          fx.homer ? "GONE! HOME RUN!" : fx.coin ? "HEADS OR TAILS..." : fx.banner ? "TIEBREAKER" : `${runners} RUNNER${runners === 1 ? "" : "S"} ON BASE`)));
+          fx.homer ? "GONE! HOME RUN!" : fx.coin ? "HEADS OR TAILS..." : fx.banner ? "EXTRA INNINGS" : `${runners} RUNNER${runners === 1 ? "" : "S"} ON BASE`)));
   }
 
   function handheldView(lines, name, tickerText, caption, buttons, activeKey = "B", fx = {}) {
@@ -606,7 +808,8 @@ export function createGameDay(container, code, onLeave) {
       if (big && big.line[1]) notes.push(`${big.used.name} is ${name[key]}'s best bat so far: ${hitLine(big.line)}.`);
       for (const h of side.hitters) {
         if (h.line && h.line[4]) notes.push(`${h.used.name} homered for ${name[key]}!`);
-        if (h.used && h.used !== h.starter) notes.push(`${h.starter?.name ?? "The starter"} sat out — ${h.used.name} came off ${name[key]}'s bench.`);
+        if (h.pitcherBat) notes.push(`With no DH available, pitcher ${h.used.name} grabbed a bat for ${name[key]}!`);
+        else if (h.used && h.used !== h.starter) notes.push(`${h.starter?.name ?? "The starter"} sat out — ${h.used.name} came off ${name[key]}'s bench.`);
         if (!h.used) notes.push(`Nobody played ${h.pos} for ${name[key]} that day.`);
       }
     }
@@ -629,9 +832,9 @@ export function createGameDay(container, code, onLeave) {
     const other = res.winner === "A" ? "B" : "A";
     const why = {
       runs: "",
-      derby: `Tied ${res.A.runs}-${res.B.runs}! Won the Home Run Derby (bench homers ${res[res.winner].derby} to ${res[other].derby}).`,
-      starterHR: `Tied ${res.A.runs}-${res.B.runs}! Derby tied too — won on starters' homers.`,
-      coin: `Tied ${res.A.runs}-${res.B.runs} with no homers to break it — won the coin flip!`,
+      derby: `Tied ${res.A.runs}-${res.B.runs} after 9 — won in the 10th inning Home Run Derby (bench homers ${res[res.winner].derby} to ${res[other].derby}).`,
+      starterHR: `Tied ${res.A.runs}-${res.B.runs} after 9 and the 10th inning derby tied too — won on starters' homers.`,
+      coin: `Tied ${res.A.runs}-${res.B.runs} after 10 innings with no homers to break it — won the coin flip!`,
     }[res.decidedBy];
     middle.replaceChildren(header(),
       el("p", { className: "hint" }, "FINAL"),
@@ -650,9 +853,9 @@ export function createGameDay(container, code, onLeave) {
     const rows = [el("li", { className: "group" }, partial ? "HITTERS (through 6)" : "HITTERS")];
     const tag = (pick) => { const f = movedFrom(pick); return f ? el("small", { className: "moved" }, ` ↔ from ${f}`) : null; };
     for (const h of s.hitters) {
-      const subbed = h.used && h.used !== h.starter;
+      const subbed = h.used && h.used !== h.starter && !h.pitcherBat;
       rows.push(el("li", { className: (h.used ? "filled" : "") + " clickable", title: "See his real game", onclick: () => hitterCard(h, date, h.bases) },
-        el("span", { className: "slot" }, h.pos),
+        el("span", { className: "slot" }, h.pitcherBat ? "P" : h.pos),
         el("span", { className: "who" },
           h.used ? h.used.name : (h.starter?.name ?? "—"), tag(h.used ?? h.starter),
           subbed ? el("small", {}, ` (for ${h.starter?.name ?? "—"})`) : null,
@@ -686,6 +889,6 @@ export function createGameDay(container, code, onLeave) {
 
   return {
     update,
-    destroy() { destroyed = true; cancelClock(); audioCtx?.close().catch(() => {}); document.body.classList.remove("drafting"); modal.hidden = true; },
+    destroy() { destroyed = true; cancelClock(); audioCtx?.close().catch(() => {}); document.body.classList.remove("drafting"); modal.hidden = true; pad?.destroy(); },
   };
 }

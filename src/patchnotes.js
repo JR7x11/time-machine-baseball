@@ -3,6 +3,25 @@
 // Tags: NEW, CHANGE, RULE (a scoring or rules change — always call these out), IMPROVED, FIX.
 export const PATCH_NOTES = [
   {
+    version: "v1.3",
+    date: "Nov 12, 2026",
+    title: "The Lineup Card & the Phone Handheld",
+    notes: [
+      ["NEW", "Phones get their own handheld: one screen at a time with FREE AGENTS, AWAY and HOME buttons, tap a player then a spot, and big AUTODRAFT and DRAFT buttons. PC and iPad stay the same."],
+      ["RULE", "New LINEUP CARD after the shuffle: at any position where you have a starter and a backup, choose who starts. If both played that day, the one you started counts."],
+      ["RULE", "Sit a regular and he swings in the Home Run Derby if the game ends tied."],
+      ["RULE", "DH! Name a bench outfielder as your designated hitter on the lineup card. He bats 9th if his starter plays — but then he can't swing in the Home Run Derby."],
+      ["RULE", "Set your pitching staff on the lineup card: tap two pitchers to swap roles. Want a starter closing or a different arm starting? Your call."],
+      ["CHANGE", "Game day stats stay secret until the first pitch, so lineup calls are gut calls."],
+      ["IMPROVED", "Protecting bench players matters more: a protected backup is guaranteed to be yours to start."],
+      ["CHANGE", "Play-by-play follows the pitching changes: innings 1–5 with the starters, the 6th as the relievers come in, the 7th inning stretch, then the 7th, 8th and 9th half-inning by half-inning with the relievers and closers."],
+      ["CHANGE", "SKIP jumps to the next pitching change: from the first pitch it goes to the top of the 6th."],
+      ["CHANGE", "Tied after 9? EXTRA INNINGS! The Home Run Derby is now played as the 10th inning."],
+      ["IMPROVED", "The draft list now says its stats are decade totals (e.g. 1990–1999)."],
+      ["NEW", "CHARGE! A retro fanfare (turn SOUND on) plays at the first pitch, kicks off the 10th inning Home Run Derby, and sometimes greets the bullpens in the top of the 6th."],
+    ],
+  },
+  {
     version: "v1.2",
     date: "Nov 6, 2026",
     title: "Rules, Patch Notes & the Home Run Derby",
