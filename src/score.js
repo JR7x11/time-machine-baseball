@@ -78,6 +78,19 @@ export function shuffleTeams(teams, keep, seed) {
 // both play that day the backup's line counts, and the benched starter becomes a Home Run Derby hitter.
 // If the man you start didn't play that day, the other one still fills in, same as always.
 export const DH_FROM = ["LF BN", "CF BN", "RF BN"]; // who can be the DH: the bench outfielders
+
+// LINEUP CARD, outfield: outfielders are interchangeable. order = the 6 outfield slots as they came out of
+// the shuffle, listed in their new spots (OF_SLOTS order), e.g. ["CF", "LF", "RF", "LF BN", "CF BN", "RF BN"]
+// puts the shuffle's CF in left and its LF in center. Moving a backup into a starting spot starts him.
+// Anything that isn't a full reshuffle of the 6 slots is ignored (outfield stays as it was).
+export const OF_SLOTS = ["LF", "CF", "RF", "LF BN", "CF BN", "RF BN"];
+export function applyOutfield(team, order) {
+  if (!Array.isArray(order) || order.length !== OF_SLOTS.length ||
+      [...order].sort().join() !== [...OF_SLOTS].sort().join()) return team;
+  const t = { ...team };
+  OF_SLOTS.forEach((spot, i) => { t[spot] = team[order[i]]; if (!t[spot]) delete t[spot]; });
+  return t;
+}
 export function applyLineup(team, swaps = [], dh = null) {
   const t = { ...team };
   for (const pos of swaps || []) {

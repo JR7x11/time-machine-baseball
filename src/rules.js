@@ -35,7 +35,7 @@ function rulesTab() {
         ROLES.map((r) => r.slot).join(", "), " and a SPARE."),
       li(b("PLAY BALL."), ` Each manager protects ${RULES.BENCH_KEEP} bench players. Your starting pitcher is always protected.`),
       li(b("The shuffle."), " Every other spot is a coin flip: the two players drafted there may trade teams. Your team can end up with players you never picked."),
-      li(b("Lineup card."), " At any position where you have a starter and a backup, choose who starts — and set your pitching staff: tap two pitchers to swap their roles (starter, relievers, closer, spare). Names only: no stats are shown until the first pitch. Trust your gut."),
+      li(b("Lineup card."), " At any infield spot where you have a starter and a backup, choose who starts. Outfielders can play anywhere: tap two to switch their spots, and move a backup into LF, CF or RF to start him. Then set your pitching staff: tap two pitchers to swap their roles (starter, relievers, closer, spare). Names only: no stats are shown until the first pitch. Trust your gut."),
       li(b("Game day."), " Real stats from that day decide everything. Visitors bat first. Step through it with NEXT, or SKIP ahead.")),
     el("h3", {}, "EVERYTHING IS A BASE"),
     el("p", {}, `Every ${RULES.BASES_PER_RUN} bases = 1 run. Leftover bases are runners left on base.`),

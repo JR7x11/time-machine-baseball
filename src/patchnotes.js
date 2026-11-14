@@ -3,6 +3,14 @@
 // Tags: NEW, CHANGE, RULE (a scoring or rules change — always call these out), IMPROVED, FIX.
 export const PATCH_NOTES = [
   {
+    version: "v1.4",
+    date: "Nov 13, 2026",
+    title: "Move Your Outfielders",
+    notes: [
+      ["RULE", "Outfielders are interchangeable on the lineup card. Tap one outfielder, then another, to switch their spots: put Mays in left, start a backup in center, or pair your shakiest starter with your best backup."],
+    ],
+  },
+  {
     version: "v1.3",
     date: "Nov 12, 2026",
     title: "The Lineup Card & the Phone Handheld",

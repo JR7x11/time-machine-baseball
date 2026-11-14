@@ -653,3 +653,6 @@ button, a, input, select, label, .pcard { touch-action: manipulation; }
 }
 .drag-grip:active { cursor: grabbing; color: #ffb74d; border-color: #ffb74d; }
 .drag-grip:focus-visible { outline: 3px solid #ffb74d; outline-offset: 2px; }
+
+/* lineup card: the outfielder tapped first, waiting for where he goes */
+.chip.lineup-pick.picked { outline: 3px solid #ffd54a; outline-offset: 2px; }

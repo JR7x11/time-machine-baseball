@@ -5,7 +5,7 @@
 import { myId, updateRoom } from "./firebase.js";
 import { studioFooter } from "./rules.js";
 import { isPhone, makePad } from "./phone.js";
-import { playGame, shuffleTeams, applyLineup, applyStaff, teamFromPicks, derbyHomers, RULES, POSITIONS, BENCH, PITCH_SLOTS, DH_FROM } from "./score.js";
+import { playGame, shuffleTeams, applyLineup, applyStaff, applyOutfield, OF_SLOTS, teamFromPicks, derbyHomers, RULES, POSITIONS, BENCH, PITCH_SLOTS, DH_FROM } from "./score.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const prettyDate = (d) => `${MONTHS[Math.floor(d / 100) % 100 - 1]} ${d % 100}, ${Math.floor(d / 10000)}`;
@@ -115,6 +115,8 @@ export function createGameDay(container, code, onLeave) {
   let staffOrder = null;   // lineup card: drafted pitching slots in their new roles (SP, RP1, RP2, CL, SPARE)
   let staffPick = null;    // the role tapped first when swapping two pitchers
   let dhChoice = null;     // lineup card: the bench outfield spot ("LF BN"…) named DH, or "" for none
+  let ofOrder = null;      // lineup card: the 6 outfield slots (from the shuffle) in their new spots (see OF_SLOTS)
+  let ofPick = null;       // the outfield spot tapped first when switching two outfielders
   let stage = "pbp1";      // pbp1 (1–5) → pen6 (6th) → stretch → pbp2 (7–9) → final  (each player steps at his own pace)
   let step = 0;
   const atFirstPitch = () => stage === "pbp1" && step === 0;
@@ -293,8 +295,9 @@ export function createGameDay(container, code, onLeave) {
   // Saved as "LF,C" (Firebase drops empty arrays, so a string is safer).
   const swapsOf = (lu) => String(lu?.swaps || "").split(",").filter((p) => POSITIONS.includes(p));
   const staffOf = (lu) => String(lu?.staff || "").split(",").filter(Boolean);
-  // A team after its manager's lineup card: hitters swapped, then pitchers in their chosen roles.
-  const carded = (team, swaps, staff, dh) => applyStaff(applyLineup(team, swaps, dh), staff);
+  const ofOf = (lu) => String(lu?.of || "").split(",").filter(Boolean);
+  // A team after its manager's lineup card: outfielders moved, infield swaps, DH, then pitchers in their roles.
+  const carded = (team, swaps, staff, dh, of) => applyStaff(applyLineup(applyOutfield(team, of), swaps, dh), staff);
   const dhOf = (lu) => (DH_FROM.includes(lu?.dh) ? lu.dh : null);
 
   // The post-shuffle teams (same result on both screens: the coin flips are seeded by room + date).
@@ -323,14 +326,15 @@ export function createGameDay(container, code, onLeave) {
       lineups[s.other]?.done ? "Lineup set ✔" : "Filling out the lineup card...");
 
     if (lineups[s.me]?.done) {
-      rosterPanel(left, myName + " (you)", carded(team, swapsOf(lineups[s.me]), staffOf(lineups[s.me]), dhOf(lineups[s.me])), null, "Lineup set ✔");
+      rosterPanel(left, myName + " (you)", carded(team, swapsOf(lineups[s.me]), staffOf(lineups[s.me]), dhOf(lineups[s.me]), ofOf(lineups[s.me])), null, "Lineup set ✔");
       middle.replaceChildren(header(), el("div", { className: "led small" }, "LINEUP SET"),
         el("p", { className: "hint" }, `Waiting for ${oppName} to hand in the lineup card...`), leaveBtn(), credit());
       return;
     }
 
     lineupChoice ??= [];
-    const both = POSITIONS.filter((pos) => team[pos] && team[pos + " BN"]);
+    lineupChoice = lineupChoice.filter((pos) => !OF_SLOTS.includes(pos)); // outfield is handled below
+    const both = POSITIONS.filter((pos) => !OF_SLOTS.includes(pos) && team[pos] && team[pos + " BN"]);
     const rows = both.map((pos) => {
       const starts = lineupChoice.includes(pos) ? "BN" : "ST";
       const choice = (which) => {
@@ -348,6 +352,27 @@ export function createGameDay(container, code, onLeave) {
       return el("div", { className: "lineup-row" },
         el("span", { className: "slot" }, pos), choice("ST"), choice("BN"));
     });
+    // Outfield: any outfielder can play any outfield spot. Tap one, then another, to switch them.
+    // Moving a backup into LF/CF/RF starts him; the man he replaced becomes that spot's backup.
+    ofOrder ??= [...OF_SLOTS];
+    const hasOF = OF_SLOTS.some((slot) => team[slot]);
+    const ofChip = (i) => {
+      const from = ofOrder[i];            // the slot this man was in after the shuffle
+      const pick = team[from];
+      const spot = OF_SLOTS[i];
+      const was = from.replace(" BN", "") !== spot.replace(" BN", "") ? el("small", {}, `was ${from.replace(" BN", " bench")}`) : null;
+      return el("button", {
+        type: "button", ariaPressed: String(ofPick === i),
+        className: "chip lineup-pick" + (i < 3 && pick ? " on" : "") + (ofPick === i ? " picked" : ""),
+        onclick: () => {
+          if (ofPick == null) ofPick = i;
+          else { if (ofPick !== i) [ofOrder[ofPick], ofOrder[i]] = [ofOrder[i], ofOrder[ofPick]]; ofPick = null; }
+          lineupScreen(info(), room.lineup || {});
+        },
+      }, pick?.name ?? "—", tag(from, pick), was);
+    };
+    const ofRows = hasOF ? ["LF", "CF", "RF"].map((pos, i) => el("div", { className: "lineup-row" },
+      el("span", { className: "slot" }, pos), ofChip(i), ofChip(i + 3))) : [];
     // Pitching staff: tap one pitcher, then another, to swap their roles. Names only — no stats.
     staffOrder ??= [...PITCH_SLOTS];
     const ROLE_NOTE = { SP: "starts · innings 1–5", RP1: "6th–7th", RP2: "8th", CL: "closes · 9th", SPARE: "fills in if one didn't pitch" };
@@ -416,7 +441,7 @@ export function createGameDay(container, code, onLeave) {
       grip.addEventListener("pointercancel", up);
     }
     // Designated hitter: one of the bench outfielders (after the starter/backup swaps above), names only.
-    const swapped = applyLineup(team, lineupChoice);
+    const swapped = applyLineup(applyOutfield(team, ofOrder), lineupChoice);
     const dhOptions = DH_FROM.filter((slot) => swapped[slot]);
     if (dhChoice == null || (dhChoice && !dhOptions.includes(dhChoice))) dhChoice = dhOptions[0] ?? "";
     const dhChip = (slot, label) => el("button", {
@@ -430,11 +455,11 @@ export function createGameDay(container, code, onLeave) {
     const status = el("p", { className: "hint" });
     lockBtn.onclick = async () => {
       lockBtn.disabled = true;
-      try { await updateRoom(code, { [`lineup/${s.me}`]: { done: true, swaps: lineupChoice.join(","), staff: staffOrder.join(","), dh: dhChoice || "" } }); }
+      try { await updateRoom(code, { [`lineup/${s.me}`]: { done: true, swaps: lineupChoice.join(","), staff: staffOrder.join(","), dh: dhChoice || "", of: ofOrder.join(",") } }); }
       catch (e) { status.textContent = "Couldn't save: " + e.message; lockBtn.disabled = false; }
     };
 
-    rosterPanel(left, myName + " (you)", carded(team, lineupChoice, staffOrder, dhChoice), null, "After the shuffle");
+    rosterPanel(left, myName + " (you)", carded(team, lineupChoice, staffOrder, dhChoice, ofOrder), null, "After the shuffle");
     middle.replaceChildren(header(),
       el("div", { className: "led small" }, "LINEUP CARD"),
       el("p", { className: "hint" },
@@ -442,7 +467,12 @@ export function createGameDay(container, code, onLeave) {
         "and the one on the bench swings in the Home Run Derby if the game ends tied. " +
         "If the man you start didn't play, the other one fills in. Game day stats stay secret until the first pitch."),
       both.length ? el("div", { className: "lineup-card" }, ...rows)
-        : el("p", { className: "hint" }, "You don't have a starter and a backup at any position — nothing to change."),
+        : el("p", { className: "hint" }, "You don't have a starter and a backup at any infield spot — nothing to change there."),
+      hasOF ? el("div", { className: "led small" }, "OUTFIELD") : null,
+      hasOF ? el("p", { className: "hint" }, ofPick == null
+        ? "Outfielders can play anywhere. Tap one, then another, to switch their spots — move a backup into LF, CF or RF to start him."
+        : `Now tap where ${team[ofOrder[ofPick]]?.name ?? "he"} should go (or tap him again to cancel).`) : null,
+      hasOF ? el("div", { className: "lineup-card" }, ...ofRows) : null,
       el("div", { className: "led small" }, "DESIGNATED HITTER"),
       el("p", { className: "hint" }, dhOptions.length
         ? "Pick a bench outfielder to bat as your DH. He bats if his starter plays that day — but then he can't swing in the Home Run Derby."
@@ -539,8 +569,8 @@ export function createGameDay(container, code, onLeave) {
     const { shuffled } = shuffleFor(s);
     // Lineup cards: where a manager started his backup, the two trade places (starter → bench spot).
     const swaps = { A: swapsOf(room.lineup?.[uA]), B: swapsOf(room.lineup?.[uB]) };
-    const teams = { A: carded(shuffled.A, swaps.A, staffOf(room.lineup?.[uA]), dhOf(room.lineup?.[uA])),
-      B: carded(shuffled.B, swaps.B, staffOf(room.lineup?.[uB]), dhOf(room.lineup?.[uB])) };
+    const teams = { A: carded(shuffled.A, swaps.A, staffOf(room.lineup?.[uA]), dhOf(room.lineup?.[uA]), ofOf(room.lineup?.[uA])),
+      B: carded(shuffled.B, swaps.B, staffOf(room.lineup?.[uB]), dhOf(room.lineup?.[uB]), ofOf(room.lineup?.[uB])) };
     const name = { A: room.players[uA].name, B: room.players[uB].name };
     const mine = s.me === uB ? "B" : "A";
     const theirs = mine === "A" ? "B" : "A";
@@ -559,8 +589,10 @@ export function createGameDay(container, code, onLeave) {
       const rows = BENCH.map((slot) => {
         const pick = teams[key][slot];
         const original = pick ? originalOwner.get(String(pick.pid)) : null;
-        const benchedByManager = swaps[key].includes(slot.replace(" BN", "")); // the starter he sat on the lineup card
-        const protectedPick = !benchedByManager && !!pick && original === key && s.ready[s.uids[key === "A" ? 0 : 1]]?.keep?.includes(slot);
+        // Where he was after the shuffle (outfielders may have moved spots on the lineup card).
+        const shuffleSlot = pick ? Object.keys(shuffled[key]).find((k) => shuffled[key][k]?.pid === pick.pid) : null;
+        const benchedByManager = !!shuffleSlot && POSITIONS.includes(shuffleSlot); // a starter he sat on the lineup card
+        const protectedPick = !benchedByManager && !!pick && original === key && s.ready[s.uids[key === "A" ? 0 : 1]]?.keep?.includes(shuffleSlot);
         const moved = !!pick && original && original !== key;
         const record = pick && day.b?.[pick.pid];
         const desc = benchedByManager ? "SAT BY MANAGER" : protectedPick ? "PROTECTED" : moved ? `TRADED FROM ${name[original].toUpperCase()}` : "REMAINED";
