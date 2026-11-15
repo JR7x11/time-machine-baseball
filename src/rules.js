@@ -33,6 +33,7 @@ function rulesTab() {
       li(b("The time machine travels"), " from today back to one real day in that decade. That's your game day — draft with it in mind."),
       li(b("Snake draft."), " Whoever started the game picks first; picks go 1-2, 2-1, 1-2… Each team drafts a starter and a backup at C, 1B, 2B, 3B, SS, LF, CF and RF, plus 5 pitchers: ",
         ROLES.map((r) => r.slot).join(", "), " and a SPARE."),
+      li(b("How to draft."), " On a computer or iPad, tap a green position button (like → SS) under a player's name. On a phone, tap a player, pick his position, then press DRAFT."),
       li(b("PLAY BALL."), ` Each manager protects ${RULES.BENCH_KEEP} bench players. Your starting pitcher is always protected.`),
       li(b("The shuffle."), " Every other spot is a coin flip: the two players drafted there may trade teams. Your team can end up with players you never picked."),
       li(b("Lineup card."), " At any infield spot where you have a starter and a backup, choose who starts. Outfielders can play anywhere: tap two to switch their spots, and move a backup into LF, CF or RF to start him. Then set your pitching staff: tap two pitchers to swap their roles (starter, relievers, closer, spare). Names only: no stats are shown until the first pitch. Trust your gut."),

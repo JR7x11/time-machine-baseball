@@ -268,24 +268,38 @@ export function createDraft(container, code, onLeave) {
     const body = rows.slice(0, SHOW_MAX).map((p) => {
       const slots = openSlots(p, myTeam);
       return el("tr", {},
-        el("td", { className: "pcell" },
+        // The draft buttons sit right under the name, so they're always on screen
+        // (on an iPad the stat columns are wider than the box and scroll sideways).
+        el("td", { className: "pcell", onclick: (e) => { if (!e.target.closest(".chip")) nudge(e.currentTarget, p, myTurn, slots); } },
           el("div", { className: "pname" }, p.name),
           el("div", { className: "pinfo" },
-            `${p.y[0]}–${p.y[1]} · ${Object.keys(p.pos).slice(0, 3).join("/")}` + (p.team ? " · " + p.team.join("/") : ""))),
-        ...cols.map((c) => el("td", { className: "num" + (c.key === col.key ? " sorted" : "") }, c.fmt(c.get(p)))),
-        el("td", { className: "pick-cell" },
+            `${p.y[0]}–${p.y[1]} · ${Object.keys(p.pos).slice(0, 3).join("/")}` + (p.team ? " · " + p.team.join("/") : "")),
           myTurn && slots.length
             ? el("div", { className: "pick-row" }, ...slots.map((slot) =>
-                el("button", { className: "chip pick", textContent: "→ " + slot, onclick: () => pick(p, slot) })))
-            : null));
+                el("button", { type: "button", className: "chip pick", textContent: "→ " + slot, onclick: () => pick(p, slot) })))
+            : null),
+        ...cols.map((c) => el("td", { className: "num" + (c.key === col.key ? " sorted" : "") }, c.fmt(c.get(p)))));
     });
     list.replaceChildren(
       el("p", { className: "stats-note" }, `STATS: ${decadeYears()} DECADE TOTALS`),
       el("table", { className: "stat-table" },
-        el("thead", {}, el("tr", {}, el("th", {}, "PLAYER"), ...cols.map(th), el("th", {}, myTurn ? "DRAFT" : ""))),
+        el("thead", {}, el("tr", {}, el("th", {}, myTurn ? "PLAYER · TAP A POSITION TO DRAFT" : "PLAYER"), ...cols.map(th))),
         el("tbody", {}, ...body)),
       rows.length ? el("p", { className: "hint" }, rows.length > SHOW_MAX ? `Showing top ${SHOW_MAX} of ${rows.length} — search a name to find anyone.` : "") 
                   : el("p", { className: "hint" }, pool.length ? "No players match." : "Loading players..."));
+  }
+
+  // PC/iPad: tapping a player's name doesn't draft him — it shows how (his spot buttons flash).
+  function nudge(cell, p, myTurn, slots) {
+    if (!myTurn) {
+      const s = state();
+      msgBox.textContent = s.done ? "" : `Not your pick yet — waiting on ${s.players[s.onClock]?.name ?? "your opponent"}.`;
+      return;
+    }
+    if (!slots.length) { msgBox.textContent = `No open position for ${p.name} on your team.`; return; }
+    msgBox.textContent = `To draft ${p.name}, tap a green position button under his name (like → ${slots[0]}).`;
+    const row = cell.querySelector(".pick-row");
+    row?.classList.remove("nudge"); void row?.offsetWidth; row?.classList.add("nudge");
   }
 
   // ----- phone: the free agents as tap-to-select cards -----
@@ -331,13 +345,13 @@ export function createDraft(container, code, onLeave) {
     const slots = p ? openSlots(p, s.teams[s.me] || {}) : [];
     if (selSlot && !slots.includes(selSlot)) selSlot = null;
     pad.setTray(p ? el("div", { className: "tray-box" },
-      el("div", { className: "tray-title" }, `${p.name.toUpperCase()} → PICK A SPOT`),
+      el("div", { className: "tray-title" }, `${p.name.toUpperCase()} → PICK A POSITION`),
       slots.length
         ? el("div", { className: "tray-slots" }, ...slots.map((slot) => el("button", {
             type: "button", className: "chip pick" + (slot === selSlot ? " on" : ""),
             onclick: () => { selSlot = slot; renderPad(state()); },
           }, slot.replace(" BN", " bench"))))
-        : el("div", { className: "hint" }, "No open spot for him on your team.")) : null);
+        : el("div", { className: "hint" }, "No open position for him on your team.")) : null);
     pad.setActions(
       padButton(auto ? "AUTODRAFT: ON" : "AUTODRAFT", "red", () => { auto = !auto; render(); }, { grow: 1 }),
       padButton("DRAFT", "go", () => {
@@ -365,7 +379,7 @@ export function createDraft(container, code, onLeave) {
     } else {
       clock.textContent = s.onClock === s.me ? "YOUR PICK" : "THEIR PICK";
       status.textContent = `Pick ${s.n + 1} of ${TOTAL_PICKS}` +
-        (s.onClock === s.me ? " — choose a player and a spot." : ` — waiting on ${s.players[s.onClock]?.name ?? "opponent"}...`);
+        (s.onClock === s.me ? (phone ? " — tap a player, pick a position, then press DRAFT." : " — tap a green position button (like → SS) under a player's name to draft him.") : ` — waiting on ${s.players[s.onClock]?.name ?? "opponent"}...`);
     }
     msgBox.textContent = message;
     autoBtn.textContent = auto ? "AUTO-DRAFT: ON" : "AUTO-DRAFT: OFF";

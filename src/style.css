@@ -165,6 +165,11 @@ body.drafting #app { max-width: 1240px; }
 .years { color: #777; font-size: 13px; }
 .pinfo { font-size: 13px; color: #9a9580; margin-top: 2px; }
 .pick-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.stat-table .pcell { cursor: pointer; }
+/* tapped a name: his spot buttons flash so you can see where to tap */
+.pick-row.nudge .chip.pick { animation: nudge .45s ease 3; }
+@keyframes nudge { 50% { background: #7cfc7c; color: #0f2a0f; box-shadow: 0 0 10px #7cfc7c; } }
+@media (prefers-reduced-motion: reduce) { .pick-row.nudge .chip.pick { animation: none; background: #7cfc7c; color: #0f2a0f; } }
 
 .credit { font-size: 10px; color: #555; margin: 18px 0 0; line-height: 1.4; }
 
